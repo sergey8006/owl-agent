@@ -334,7 +334,101 @@ class Agent:
                         "required": ["service_name", "action"]
                     }
                 }
-            }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "rag_search",
+                    "description": "Search the knowledge base using RAG (Retrieval Augmented Generation). Finds relevant document chunks.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query"},
+                            "top_k": {"type": "integer", "description": "Number of results (default: 3)"}
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "rag_ask",
+                    "description": "Ask a question using RAG. Searches documents and generates an answer with sources.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "Question to answer"}
+                        },
+                        "required": ["question"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "rag_index_file",
+                    "description": "Index a file into the RAG knowledge base for future search.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to index"}
+                        },
+                        "required": ["path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "rag_list_docs",
+                    "description": "List all indexed documents in the knowledge base.",
+                    "parameters": {"type": "object", "properties": {}}
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "task_create",
+                    "description": "Create a new subtask in the task queue (BabyAGI-style).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string", "description": "Task description"},
+                            "priority": {"type": "integer", "description": "1=highest, 10=lowest (default: 5)"}
+                        },
+                        "required": ["description"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "task_list",
+                    "description": "List tasks in the queue. Optional status filter: pending, in_progress, completed, failed.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "string", "description": "Filter by status (optional)"}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "react_solve",
+                    "description": "Use the ReAct (Reasoning+Acting) engine to solve a complex task autonomously. The agent thinks, acts, observes, and iterates.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "task": {"type": "string", "description": "Task to solve"},
+                            "max_steps": {"type": "integer", "description": "Max reasoning steps (default: 10)"}
+                        },
+                        "required": ["task"]
+                    }
+                }
+            },
         ]
 
         # Working directory for tool execution (cross-platform)
@@ -868,20 +962,61 @@ Guidelines:
                 return self._tool_list_processes(args.get("filter", ""), args.get("limit", 50))
             elif tool_name == "manage_service":
                 return self._tool_manage_service(args.get("service_name", ""), args.get("action", "status"))
-            elif tool_name == "flow_create":
-                from agent.flow_engine import FlowEngine
-                fe = FlowEngine()
-                fe.create_flow(
-                    args["flow_id"], args["name"],
-                    args["steps"], args.get("description", ""),
-                    args.get("variables", {})
+            # -- RAG tools --
+            elif tool_name == "rag_search":
+                from agent.rag_engine import search
+                results = search(args.get("query", ""), top_k=args.get("top_k", 3))
+                if not results:
+                    return "No relevant documents found."
+                lines = []
+                for r in results:
+                    lines.append(f"[{r['source']}] (score: {r['score']:.3f})\n{r['content'][:300]}")
+                return "\n---\n".join(lines)
+            elif tool_name == "rag_ask":
+                from agent.rag_engine import search_and_generate
+                result = search_and_generate(
+                    args.get("question", ""),
+                    self.client, self.model,
+                    top_k=args.get("top_k", 3)
                 )
-                return f"Flow '{args['flow_id']}' created with {len(args['steps'])} steps"
-            elif tool_name == "flow_run":
-                from agent.flow_engine import FlowEngine
-                fe = FlowEngine()
-                result = fe.run_flow(args["flow_id"])
-                return json.dumps(result, ensure_ascii=False, indent=2)[:3000]
+                sources = ", ".join([s["source"] for s in result.get("sources", [])])
+                return f"{result['answer']}\n\nSources: {sources}"
+            elif tool_name == "rag_index_file":
+                from agent.rag_engine import load_file
+                result = load_file(args.get("path", ""))
+                if "error" in result:
+                    return result["error"]
+                return f"Indexed: {result['source']} ({result['chunks']} chunks)"
+            elif tool_name == "rag_list_docs":
+                from agent.rag_engine import list_documents
+                docs = list_documents()
+                if not docs:
+                    return "No documents indexed."
+                lines = [f"- {d['title']} ({d['source']}): {d['chunk_count']} chunks" for d in docs]
+                return "\n".join(lines)
+            # -- Task management tools --
+            elif tool_name == "task_create":
+                from agent.react_engine import create_task
+                t = create_task(args.get("description", ""), priority=args.get("priority", 5))
+                return f"Task created: [{t['id']}] {t['description']}"
+            elif tool_name == "task_list":
+                from agent.react_engine import list_tasks
+                tasks = list_tasks(status=args.get("status"))
+                if not tasks:
+                    return "No tasks found."
+                lines = []
+                for t in tasks:
+                    lines.append(f"[{t['status']}] (p{t['priority']}) {t['description']}")
+                return "\n".join(lines)
+            # -- ReAct tool --
+            elif tool_name == "react_solve":
+                from agent.react_engine import ReActEngine
+                engine = ReActEngine(self)
+                result = engine.run(
+                    args.get("task", ""),
+                    max_steps=args.get("max_steps", 10)
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)[:5000]
             else:
                 return f"Unknown tool: {tool_name}"
         except Exception as e:

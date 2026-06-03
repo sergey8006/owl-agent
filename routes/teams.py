@@ -64,6 +64,26 @@ def api_teams_run(team_id):
     return jsonify({"ok": True, "results": results})
 
 
+@teams_bp.route("/api/teams/<team_id>/run-hierarchical", methods=["POST"])
+def api_teams_run_hierarchical(team_id):
+    """Run team in hierarchical mode (manager + workers + review loop)."""
+    from agent.agent_team import AgentTeam, HierarchicalTeamRunner
+
+    team = AgentTeam.get(team_id)
+    if not team:
+        return jsonify({"error": "team not found"}), 404
+
+    if team.status == "running":
+        return jsonify({"error": "team is already running"}), 409
+
+    data = request.json or {}
+    max_iterations = data.get("max_iterations", 3)
+
+    runner = HierarchicalTeamRunner(team)
+    results = runner.run(max_iterations=max_iterations)
+    return jsonify({"ok": True, "results": results})
+
+
 @teams_bp.route("/api/teams/<team_id>/messages", methods=["GET"])
 def api_teams_messages(team_id):
     from agent.agent_team import AgentTeam

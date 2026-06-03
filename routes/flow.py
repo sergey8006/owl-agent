@@ -1,6 +1,8 @@
 """
 Flow routes: /api/flow/list, /api/flow/get, /api/flow/create,
-             /api/flow/run, /api/flow/delete, /api/flow/history, /api/flow/snapshot/cleanup
+             /api/flow/run, /api/flow/delete, /api/flow/history,
+             /api/flow/snapshot/cleanup, /api/flow/resume, /api/flow/execution-log
+             /api/flow/checkpoint/save, /api/flow/checkpoint/clear
 """
 from flask import Blueprint, request, jsonify
 
@@ -47,9 +49,10 @@ def api_flow_run():
     data = request.json or {}
     flow_id = data.get("id", "")
     inputs = data.get("inputs", {})
+    resume = data.get("resume", False)
     if not flow_id:
         return jsonify({"error": "id required"}), 400
-    result = fe.run_flow(flow_id, inputs)
+    result = fe.run_flow(flow_id, inputs=inputs, resume=resume)
     return jsonify(result)
 
 
@@ -81,3 +84,43 @@ def api_flow_snapshot_cleanup():
         return jsonify({"error": "id required"}), 400
     fe.cleanup_snapshots(flow_id)
     return jsonify({"ok": True})
+
+
+# -- Checkpointing --
+
+@flow_bp.route("/api/flow/checkpoint/save", methods=["POST"])
+def api_flow_checkpoint_save():
+    _, _, fe = _get_agent()
+    data = request.json or {}
+    flow_id = data.get("id", "")
+    step_index = data.get("step_index", 0)
+    variables = data.get("variables", {})
+    log = data.get("log", [])
+    if not flow_id:
+        return jsonify({"error": "id required"}), 400
+    fe.save_checkpoint(flow_id, step_index, variables, log)
+    return jsonify({"ok": True})
+
+
+@flow_bp.route("/api/flow/checkpoint/clear", methods=["POST"])
+def api_flow_checkpoint_clear():
+    _, _, fe = _get_agent()
+    data = request.json or {}
+    flow_id = data.get("id", "")
+    if not flow_id:
+        return jsonify({"error": "id required"}), 400
+    fe.clear_checkpoint(flow_id)
+    return jsonify({"ok": True})
+
+
+# -- Execution Log --
+
+@flow_bp.route("/api/flow/execution-log", methods=["GET"])
+def api_flow_execution_log():
+    _, _, fe = _get_agent()
+    flow_id = request.args.get("id", "")
+    limit = request.args.get("limit", 20, type=int)
+    if not flow_id:
+        return jsonify({"error": "id required"}), 400
+    log = fe.get_execution_log(flow_id, limit)
+    return jsonify({"executions": log})

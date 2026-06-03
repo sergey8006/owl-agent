@@ -141,4 +141,8 @@ if __name__ == "__main__":
     print(f"Health: http://localhost:{args.port}/api/health")
     print(f"Open http://localhost:{args.port} in your browser")
 
+    # Start scheduler
+    from agent.scheduler import start_scheduler
+    start_scheduler()
+
     app.run(host=args.host, port=args.port, debug=False, threaded=True)

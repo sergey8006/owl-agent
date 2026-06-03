@@ -54,14 +54,29 @@ class FlowEngine:
                 executed_at TEXT NOT NULL,
                 UNIQUE(flow_id, step_index)
             );
-            CREATE TABLE IF NOT EXISTS flow_snapshots (
+            CREATE TABLE IF NOT EXISTS flow_checkpoints (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 flow_id TEXT NOT NULL,
                 step_index INTEGER NOT NULL,
-                original_path TEXT NOT NULL,
-                backup_path TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                variables TEXT NOT NULL,
+                log TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(flow_id)
             );
+            CREATE TABLE IF NOT EXISTS flow_execution_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                flow_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                steps_completed INTEGER DEFAULT 0,
+                steps_failed INTEGER DEFAULT 0,
+                log TEXT DEFAULT '',
+                error TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_execution_log_flow ON flow_execution_log(flow_id);
+            CREATE INDEX IF NOT EXISTS idx_execution_log_run ON flow_execution_log(run_id);
         """)
         self.conn.commit()
 
@@ -98,28 +113,109 @@ class FlowEngine:
         self.conn.execute("DELETE FROM flows WHERE id = ?", (flow_id,))
         self.conn.execute("DELETE FROM flow_run_history WHERE flow_id = ?", (flow_id,))
         self.conn.execute("DELETE FROM flow_snapshots WHERE flow_id = ?", (flow_id,))
+        self.conn.execute("DELETE FROM flow_checkpoints WHERE flow_id = ?", (flow_id,))
+        self.conn.execute("DELETE FROM flow_execution_log WHERE flow_id = ?", (flow_id,))
         self.conn.commit()
         return True
 
+    # -- Checkpointing --
+
+    def save_checkpoint(self, flow_id: str, step_index: int, variables: dict, log: list):
+        """Сохранить прогресс flow для восстановления."""
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            "INSERT OR REPLACE INTO flow_checkpoints (flow_id, step_index, variables, log, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (flow_id, step_index, json.dumps(variables, ensure_ascii=False),
+             json.dumps(log, ensure_ascii=False), now)
+        )
+        self.conn.commit()
+
+    def load_checkpoint(self, flow_id: str) -> dict:
+        """Загрузить последний checkpoint."""
+        row = self.conn.execute(
+            "SELECT * FROM flow_checkpoints WHERE flow_id = ? ORDER BY created_at DESC LIMIT 1",
+            (flow_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "step_index": row["step_index"],
+            "variables": json.loads(row["variables"]),
+            "log": json.loads(row["log"]),
+            "created_at": row["created_at"],
+        }
+
+    def clear_checkpoint(self, flow_id: str):
+        self.conn.execute("DELETE FROM flow_checkpoints WHERE flow_id = ?", (flow_id,))
+        self.conn.commit()
+
+    # -- Execution Log --
+
+    def start_execution(self, flow_id: str, run_id: str):
+        """Начать запись выполнения."""
+        self.conn.execute(
+            "INSERT INTO flow_execution_log (flow_id, run_id, status, started_at) VALUES (?, ?, ?, ?)",
+            (flow_id, run_id, "running", datetime.now().isoformat())
+        )
+        self.conn.commit()
+
+    def finish_execution(self, run_id: str, status: str, steps_completed: int,
+                         steps_failed: int, log: list, error: str = ""):
+        """Завершить запись выполнения."""
+        self.conn.execute(
+            "UPDATE flow_execution_log SET status=?, finished_at=?, steps_completed=?, "
+            "steps_failed=?, log=?, error=? WHERE run_id=?",
+            (status, datetime.now().isoformat(), steps_completed, steps_failed,
+             json.dumps(log, ensure_ascii=False), error, run_id)
+        )
+        self.conn.commit()
+
+    def get_execution_log(self, flow_id: str, limit: int = 20) -> list:
+        """Получить историю выполнений flow."""
+        rows = self.conn.execute(
+            "SELECT * FROM flow_execution_log WHERE flow_id = ? ORDER BY started_at DESC LIMIT ?",
+            (flow_id, limit)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # -- Run --
 
-    def run_flow(self, flow_id, skip_completed=True, dry_run=False, max_parallel=4):
+    def run_flow(self, flow_id, skip_completed=True, dry_run=False, max_parallel=4, inputs=None, resume=False):
         flow = self.get_flow(flow_id)
         if not flow:
             return {"status": "error", "error": f"Flow '{flow_id}' not found"}
 
         steps = flow["steps"]
         variables = dict(flow.get("variables", {}))
+        if inputs:
+            variables.update(inputs)
         log = []
         completed = 0
         skipped = 0
         failed = 0
 
+        # Generate run_id for execution tracking
+        import uuid as _uuid
+        run_id = str(_uuid.uuid4())[:12]
+
+        # Check for resume from checkpoint
+        resume_from = 0
+        checkpoint = self.load_checkpoint(flow_id)
+        if checkpoint and resume:
+            resume_from = checkpoint["step_index"]
+            variables.update(checkpoint["variables"])
+            log = list(checkpoint.get("log", []))
+            log.append(f"[resume] from step {resume_from}")
+
+        # Start execution log
+        self.start_execution(flow_id, run_id)
+
         completed_steps = set()
         if skip_completed:
             completed_steps = self._get_completed_steps(flow_id)
 
-        i = 0
+        i = resume_from
         while i < len(steps):
             step = steps[i]
             action = step.get("action", "unknown")
@@ -211,33 +307,62 @@ class FlowEngine:
             if action in MUTATING_ACTIONS:
                 snapshot_paths = self._create_snapshots(flow_id, i, step)
 
-            try:
-                output = self._execute_step(step, variables)
-                status = "success"
-                if "set_var" in step:
-                    variables[step["set_var"]] = str(output).strip()
-                completed += 1
-                log.append(f"[step {i}] OK: {action} -> {str(output)[:80]}")
-            except Exception as e:
-                status = "failed"
-                error_msg = str(e)
-                log.append(f"[step {i}] FAIL: {action} -> {error_msg}")
-                self._rollback_all_snapshots(flow_id)
-                log.append(f"[step {i}] ROLLBACK done")
-                failed += 1
-                self._save_history(flow_id, i, action, status, error_msg)
-                return {
-                    "status": "failed", "error": error_msg,
-                    "failed_step": i, "steps_completed": completed,
-                    "steps_skipped": skipped, "steps_failed": failed,
-                    "variables": variables, "log": log,
-                }
+            # Retry logic: step can specify "retry": {"count": 3, "delay": 2}
+            retry_config = step.get("retry", {})
+            max_retries = retry_config.get("count", 0) if isinstance(retry_config, dict) else 0
+            retry_delay = retry_config.get("delay", 1) if isinstance(retry_config, dict) else 1
+
+            output = None
+            last_error = None
+            for attempt in range(max_retries + 1):
+                try:
+                    output = self._execute_step(step, variables)
+                    status = "success"
+                    if "set_var" in step:
+                        variables[step["set_var"]] = str(output).strip()
+                    completed += 1
+                    if attempt > 0:
+                        log.append(f"[step {i}] OK (attempt {attempt+1}): {action} -> {str(output)[:80]}")
+                    else:
+                        log.append(f"[step {i}] OK: {action} -> {str(output)[:80]}")
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    if attempt < max_retries:
+                        log.append(f"[step {i}] RETRY {attempt+1}/{max_retries}: {action} -> {last_error}")
+                        time.sleep(retry_delay)
+                    else:
+                        status = "failed"
+                        error_msg = last_error
+                        log.append(f"[step {i}] FAIL: {action} -> {error_msg}")
+                        self._rollback_all_snapshots(flow_id)
+                        log.append(f"[step {i}] ROLLBACK done")
+                        failed += 1
+                        self._save_history(flow_id, i, action, status, error_msg)
+                        self.finish_execution(run_id, "failed", completed, failed, log, error_msg)
+                        return {
+                            "status": "failed", "error": error_msg,
+                            "run_id": run_id,
+                            "failed_step": i, "steps_completed": completed,
+                            "steps_skipped": skipped, "steps_failed": failed,
+                            "variables": variables, "log": log,
+                        }
 
             self._save_history(flow_id, i, action, status, str(output)[:500])
+            # Save checkpoint after each successful step
+            self.save_checkpoint(flow_id, i + 1, variables, log)
             i += 1
 
+        # Finish execution log
+        final_status = "success" if failed == 0 else "partial"
+        self.finish_execution(run_id, final_status, completed, failed, log)
+        # Clear checkpoint on successful completion
+        if failed == 0:
+            self.clear_checkpoint(flow_id)
+
         return {
-            "status": "success" if failed == 0 else "partial",
+            "status": final_status,
+            "run_id": run_id,
             "steps_completed": completed, "steps_skipped": skipped,
             "steps_failed": failed, "variables": variables, "log": log,
         }

@@ -257,3 +257,156 @@ class TeamRunner:
                 prompt += f"\n\n## Скилл: {skill_data['name']}\n{content}"
 
         return Agent(system_prompt=prompt)
+
+
+class HierarchicalTeamRunner:
+    """
+    Hierarchical multi-agent system (CrewAI-style).
+    Manager agent decomposes task, delegates to workers, reviews results.
+    Supports: sequential, parallel, and iterative refinement.
+    """
+
+    def __init__(self, team: AgentTeam):
+        self.team = team
+
+    def run(self, max_iterations: int = 3) -> dict:
+        """
+        Hierarchical execution:
+        1. Manager decomposes task
+        2. Workers execute subtasks (in parallel where possible)
+        3. Manager reviews and either approves or requests revisions
+        4. Iterate until done or max_iterations reached
+        """
+        from agent.core import Agent
+
+        self.team.status = "running"
+        self.team._save()
+
+        # Create manager agent
+        manager = Agent(
+            system_prompt=(
+                f"You are the Team Lead for '{self.team.name}'.\n"
+                f"Your job: decompose tasks, delegate to workers, review results.\n"
+                f"Team task: {self.team.task}\n"
+                f"Workers: {json.dumps([r['role'] for r in self.team.agent_roles], ensure_ascii=False)}\n"
+                f"Tools: run_command, read_file, write_file, edit_file, list_dir, execute_code, web_search, calculator.\n"
+                f"Be decisive. Review worker output critically. Request revisions if needed."
+            )
+        )
+
+        all_results = []
+        context = ""
+
+        for iteration in range(max_iterations):
+            self.team._log("manager", "Manager", f"Iteration {iteration + 1}")
+
+            # Step 1: Manager plans
+            plan_prompt = f"Team task: {self.team.task}\n"
+            if context:
+                plan_prompt += f"\nPrevious results:\n{context}\n"
+            plan_prompt += "\nCreate a plan. For each worker, specify their subtask. Return JSON: {\"subtasks\": [{\"agent\": \"role\", \"task\": \"description\"}, ...]}"
+
+            try:
+                resp = manager.chat(plan_prompt)
+                plan_text = resp.get("response", "")
+                # Extract JSON
+                import re as _re
+                match = _re.search(r'\{.*\}', plan_text, _re.DOTALL)
+                if match:
+                    plan = json.loads(match.group())
+                else:
+                    plan = {"subtasks": [{"agent": r["role"], "task": self.team.task} for r in self.team.agent_roles]}
+            except Exception as e:
+                self.team._log("manager", "Manager", f"Planning error: {e}", "error")
+                plan = {"subtasks": [{"agent": r["role"], "task": self.team.task} for r in self.team.agent_roles]}
+
+            # Step 2: Execute subtasks
+            subtask_results = []
+            for subtask in plan.get("subtasks", []):
+                agent_role = subtask.get("agent", "Worker")
+                task_desc = subtask.get("task", "")
+
+                # Find matching role config
+                role_config = None
+                for r in self.team.agent_roles:
+                    if r["role"] == agent_role:
+                        role_config = r
+                        break
+
+                skills = role_config.get("skills", []) if role_config else []
+
+                worker = Agent(
+                    system_prompt=(
+                        f"You are a {agent_role} in team '{self.team.name}'.\n"
+                        f"Team task: {self.team.task}\n"
+                        f"Your subtask: {task_desc}\n"
+                        + (f"Skills: {', '.join(skills)}\n" if skills else "")
+                        + "Tools: run_command, read_file, write_file, edit_file, list_dir, execute_code, web_search, calculator.\n"
+                        "Be thorough. Return your complete result."
+                    )
+                )
+
+                worker_prompt = f"Complete this subtask: {task_desc}"
+                if context:
+                    worker_prompt += f"\n\nContext from previous work:\n{context}"
+
+                try:
+                    resp = worker.chat(worker_prompt)
+                    result_text = resp.get("response", "")
+                except Exception as e:
+                    result_text = f"Error: {e}"
+
+                subtask_results.append({
+                    "agent": agent_role,
+                    "task": task_desc,
+                    "result": result_text,
+                })
+                self.team._log(agent_role, agent_role, f"Completed: {result_text[:200]}")
+
+            # Step 3: Manager reviews
+            results_summary = "\n\n".join([
+                f"Agent: {r['agent']}\nTask: {r['task']}\nResult: {r['result'][:500]}"
+                for r in subtask_results
+            ])
+
+            review_prompt = (
+                f"Review the following results for task: {self.team.task}\n\n"
+                f"{results_summary}\n\n"
+                f"Is the task complete? Return JSON: {{\"complete\": true/false, \"feedback\": \"...\"}}"
+            )
+
+            try:
+                resp = manager.chat(review_prompt)
+                review_text = resp.get("response", "")
+                match = _re.search(r'\{.*\}', review_text, _re.DOTALL)
+                if match:
+                    review = json.loads(match.group())
+                else:
+                    review = {"complete": True, "feedback": "Looks good"}
+            except Exception:
+                review = {"complete": True, "feedback": "Review failed, assuming complete"}
+
+            all_results.append({
+                "iteration": iteration + 1,
+                "plan": plan,
+                "results": subtask_results,
+                "review": review,
+            })
+
+            context += f"\n--- Iteration {iteration + 1} ---\n{results_summary}\n"
+
+            if review.get("complete", False):
+                self.team._log("manager", "Manager", "Task approved!")
+                break
+            else:
+                self.team._log("manager", "Manager", f"Revision needed: {review.get('feedback', '')}")
+
+        self.team.status = "completed"
+        self.team.results = {"iterations": all_results}
+        self.team._save()
+
+        return {
+            "status": self.team.status,
+            "iterations": len(all_results),
+            "results": all_results,
+        }
