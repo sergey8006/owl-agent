@@ -18,6 +18,7 @@ from config import (
     PROVIDERS,
     PROVIDER_CONFIG_PATH,
     SERVER_DIR,
+    STATIC_DIR,
     SERVER_HOST,
     SERVER_PORT,
     RATE_LIMIT_PER_MINUTE,
@@ -31,7 +32,7 @@ sys.path.insert(0, str(SERVER_DIR))
 # ── App ──────────────────────────────────────────────────────────────────────
 _server_start_time = _time.time()
 
-app = Flask(__name__, static_folder=str(Path("static").resolve()))
+app = Flask(__name__, static_folder=str(STATIC_DIR))
 
 
 @app.after_request

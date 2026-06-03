@@ -1,0 +1,52 @@
+[
+  {
+    "id": "d02f04e0",
+    "description": "test task",
+    "status": "pending",
+    "priority": 3,
+    "parent_id": null,
+    "created_at": "2026-06-03T22:26:31.057467",
+    "completed_at": null,
+    "result": null
+  },
+  {
+    "id": "8fae8ca5",
+    "description": "Research topic X",
+    "status": "completed",
+    "priority": 1,
+    "parent_id": null,
+    "created_at": "2026-06-03T22:28:22.267719",
+    "completed_at": "2026-06-03T22:28:22.290419",
+    "result": "completed via test"
+  },
+  {
+    "id": "11a1ff58",
+    "description": "Write report",
+    "status": "pending",
+    "priority": 3,
+    "parent_id": null,
+    "created_at": "2026-06-03T22:28:22.272533",
+    "completed_at": null,
+    "result": null
+  },
+  {
+    "id": "f8f3ad3d",
+    "description": "Изучить документацию",
+    "status": "completed",
+    "priority": 1,
+    "parent_id": null,
+    "created_at": "2026-06-03T23:21:35.897374",
+    "completed_at": "2026-06-03T23:21:35.925339",
+    "result": "done"
+  },
+  {
+    "id": "e2892619",
+    "description": "Написать отчёт",
+    "status": "pending",
+    "priority": 3,
+    "parent_id": null,
+    "created_at": "2026-06-03T23:21:35.909810",
+    "completed_at": null,
+    "result": null
+  }
+]

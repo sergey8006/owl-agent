@@ -1,0 +1,26 @@
+{
+  "7f548516": {
+    "id": "7f548516",
+    "name": "test_interval",
+    "type": "interval",
+    "enabled": false,
+    "created_at": "2026-06-03T22:26:31.301393",
+    "run_count": 1,
+    "last_run": "2026-06-03T22:26:35.681151",
+    "last_status": "error: slice(None, 100, None)",
+    "command": "echo test",
+    "interval_seconds": 3600
+  },
+  "59492283": {
+    "id": "59492283",
+    "name": "test_job",
+    "type": "interval",
+    "enabled": true,
+    "created_at": "2026-06-03T23:21:36.252019",
+    "run_count": 5,
+    "last_run": "2026-06-03T23:27:53.805587",
+    "last_status": "error: slice(None, 100, None)",
+    "command": "echo test",
+    "interval_seconds": 300
+  }
+}

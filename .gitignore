@@ -26,7 +26,11 @@ env/
 Thumbs.db
 desktop.ini
 
-# OWL Agent specific
+# Memory/DB files
+memory/rag/
+memory/scheduler/
+memory/secrets/
+memory/tasks/
 memory/*.db
 memory/*.db-wal
 memory/*.db-shm

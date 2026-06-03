@@ -1,1 +1,1 @@
-{"provider": "lmstudio", "url": "http://127.0.0.1:1234/v1", "api_key": "lm-studio", "model": "nvidia/nemotron-3-nano-4b"}
+{"provider": "ollama", "url": "http://127.0.0.1:11434/v1", "api_key": "ollama", "model": "qwen3.5:4b"}
