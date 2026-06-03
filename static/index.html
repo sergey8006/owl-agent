@@ -1,0 +1,2827 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Chat</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#c9d1d9;
+  --accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--purple:#bc8cff;
+  --user-bg:#1c2128;--agent-bg:#161b22;
+}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:260px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:10}
+.sidebar-header h2{font-size:14px;color:var(--accent)}
+.sidebar-header small{font-size:11px;color:#8b949e}
+.sidebar section{border-bottom:1px solid var(--border)}
+.sidebar section h3{font-size:11px;text-transform:uppercase;color:#8b949e;padding:8px 16px;letter-spacing:0.5px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;margin:0}
+.sidebar section h3:hover{background:rgba(88,166,255,0.05)}
+.sidebar section h3 .arrow{font-size:9px;transition:transform 0.2s;color:#484f58}
+.sidebar section.collapsed h3 .arrow{transform:rotate(-90deg)}
+.sidebar section.collapsed .section-body{display:none}
+.section-body{padding:0 0 8px 0}
+.sidebar-btn{width:100%;padding:8px 16px;background:none;border:none;color:var(--text);font-size:13px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px}
+.sidebar-btn:hover{background:rgba(88,166,255,0.1)}
+.sidebar-btn .icon{width:20px;text-align:center;font-size:14px}
+.memory-list{padding:4px 8px;max-height:200px;overflow-y:auto}
+.memory-item{font-size:11px;padding:4px 8px;margin:2px 0;background:rgba(88,166,255,0.05);border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.memory-item:hover{background:rgba(88,166,255,0.15)}
+.memory-item .del{opacity:0;cursor:pointer;font-size:12px;color:var(--red)}
+.memory-item:hover .del{opacity:1}
+.sidebar input[type="text"]{width:100%;padding:8px 16px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:4px;margin:4px 0}
+.sidebar input[type="range"]{width:100%}
+
+/* Toggle sidebar */
+.sidebar.collapsed{width:48px;min-width:48px}
+.sidebar.collapsed .sidebar-header h2,.sidebar.collapsed .sidebar-header small,.sidebar.collapsed section h3,.sidebar.collapsed .sidebar-btn span:last-child,.sidebar.collapsed .memory-list,.sidebar-collapsed-hide{display:none}
+.sidebar.collapsed .sidebar-btn{justify-content:center;padding:10px}
+.sidebar.collapsed .sidebar-header{text-align:center;padding:8px}
+#toggleSidebar{position:absolute;top:8px;left:8px;z-index:100;background:none;border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:14px}
+
+/* Main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.header{padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:15px;font-weight:600}
+.header small{font-size:11px;color:#8b949e}
+.header-right{display:flex;gap:8px;align-items:center}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.status-dot.ok{background:var(--green)}
+.status-dot.loading{background:var(--yellow);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Messages */
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:85%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;position:relative;white-space:pre-wrap;word-break:break-word}
+.msg.user{background:var(--user-bg);align-self:flex-end;border:1px solid var(--border)}
+.msg.agent{background:var(--agent-bg);align-self:flex-start;border:1px solid var(--border)}
+.msg.system{font-size:11px;color:#8b949e;text-align:center;max-width:100%;align-self:center;background:none;border:none;padding:4px}
+.msg .role-label{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.6}
+.msg.user .role-label{color:var(--purple)}
+.msg.agent .role-label{color:var(--accent)}
+.msg .timestamp{font-size:10px;color:#484f58;margin-top:4px;text-align:right}
+.msg pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;overflow-x:auto;font-size:12px;margin:6px 0}
+.msg code{background:rgba(110,118,129,0.2);padding:1px 4px;border-radius:3px;font-size:12px}
+.msg pre code{background:none;padding:0}
+
+/* Thinking dots */
+.thinking{display:flex;gap:4px;padding:4px 0}
+.thinking span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:bounce 1.2s infinite}
+.thinking span:nth-child(2){animation-delay:0.2s}
+.thinking span:nth-child(3){animation-delay:0.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(0.4);opacity:0.3}40%{transform:scale(1);opacity:1}}
+
+/* Document preview */
+.doc-preview{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin:6px 0;font-size:12px;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:monospace}
+
+  /* Input area */
+  .input-area{padding:12px 16px;background:var(--surface);border-top:1px solid var(--border)}
+  .input-wrap{display:flex;gap:8px;align-items:flex-end}
+  textarea{flex:1;padding:10px 14px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:13px;resize:none;font-family:inherit;line-height:1.4;min-height:42px;max-height:150px}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:opacity 0.2s;white-space:nowrap}
+  button:hover{opacity:0.85}
+  button:disabled{opacity:0.4;cursor:not-allowed}
+  .btn-primary{background:var(--accent);color:#0d1117}
+  .btn-secondary{background:var(--border);color:var(--text)}
+  .btn-green{background:var(--green);color:#0d1117}
+  .btn-red{background:var(--red);color:white}
+  .btn-sm{padding:4px 10px;font-size:11px}
+  .btn-stop{background:var(--red);color:white;animation:pulse 1s infinite}
+
+  /* Model selector */
+  .model-select{padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:11px;min-width:120px;max-width:180px}
+  .model-select:focus{outline:none;border-color:var(--accent)}
+
+.file-attach{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:#8b949e}
+.file-attach input[type="file"]{display:none}
+.file-attach label{cursor:pointer;padding:4px 10px;border:1px dashed var(--border);border-radius:4px;font-size:12px;color:var(--accent)}
+.file-attach label:hover{border-color:var(--accent)}
+.attached-files{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.attached-file{font-size:11px;background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:4px;display:flex;align-items:center;gap:4px}
+.attached-file .rm{cursor:pointer;color:var(--red);font-weight:bold}
+
+/* Settings modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto}
+.modal h3{margin-bottom:16px;font-size:16px}
+.modal label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px;margin-top:12px}
+.modal input,.modal select{width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px}
+.modal-btns{display:flex;gap:8px;margin-top:20px}
+
+/* Context bar */
+.context-bar{padding:6px 16px;background:var(--surface);border-top:1px solid var(--border);font-size:11px;color:#8b949e;display:flex;gap:12px;align-items:center}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#484f58}
+
+/* Flow Editor Nodes */
+.flow-node{position:absolute;width:150px;border:1px solid var(--border);border-radius:8px;cursor:move;z-index:1;user-select:none;transition:box-shadow 0.2s}
+.flow-node:hover{box-shadow:0 0 0 2px rgba(88,166,255,0.3)}
+.flow-node-header{display:flex;align-items:center;gap:4px;padding:6px 8px;border-radius:7px 7px 0 0;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden}
+.flow-node-icon{font-size:12px;flex-shrink:0}
+.flow-node-title{flex:1;overflow:hidden;text-overflow:ellipsis}
+.flow-node-del{color:var(--red);cursor:pointer;font-size:10px;opacity:0.5;padding:0 2px;flex-shrink:0}
+.flow-node-del:hover{opacity:1}
+.flow-node-body{padding:4px 8px 6px;font-size:10px;min-height:16px}
+.flow-node-port{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:crosshair;z-index:2;top:50%;transform:translateY(-50%)}
+.flow-port-out{right:-6px}
+.flow-port-in{left:-6px}
+.flow-port-out:hover,.flow-port-in:hover{background:var(--accent);border-color:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- Flow Editor Overlay -->
+<div class="modal-overlay" id="flowEditorOverlay" style="z-index:500">
+  <div style="width:95vw;height:92vh;background:var(--surface);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <!-- Editor Header -->
+    <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="display:flex;gap:12px;align-items:center">
+        <h2 style="font-size:16px">🔀 Flow Editor</h2>
+        <span style="font-size:11px;color:#8b949e" id="flowEditorTitle">Новый флоу</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary btn-sm" onclick="saveFlow()">💾 Сохранить</button>
+        <button class="btn-green btn-sm" onclick="runFlowFromEditor()">▶ Запустить</button>
+        <button class="btn-secondary btn-sm" onclick="closeFlowEditor()">✕ Закрыть</button>
+      </div>
+    </div>
+    <!-- Editor Body -->
+    <div style="flex:1;display:flex;min-height:0">
+      <!-- Node Palette -->
+      <div style="width:180px;min-width:180px;border-right:1px solid var(--border);overflow-y:auto;padding:8px;flex-shrink:0">
+        <div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Добавить шаг</div>
+        <div id="nodePalette">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <!-- Canvas -->
+      <div style="flex:1;position:relative;overflow:hidden;background:var(--bg)" id="flowCanvas">
+        <!-- Nodes rendered here by JS -->
+      </div>
+      <!-- JSON Preview -->
+      <div style="width:280px;min-width:280px;border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0">
+        <div style="padding:8px;border-bottom:1px solid var(--border);font-size:11px;color:#8b949e">JSON Preview</div>
+        <textarea id="flowJSON" readonly style="flex:1;background:var(--bg);border:none;color:var(--text);font-size:11px;font-family:monospace;padding:8px;resize:none;outline:none" placeholder="Steps JSON..."></textarea>
+        <!-- Output -->
+        <div style="border-top:1px solid var(--border)">
+          <div style="padding:8px;font-size:11px;color:#8b949e">Output</div>
+          <pre id="flowOutput" style="display:none;max-height:150px;overflow-y:auto;font-size:11px;font-family:monospace;padding:8px;margin:0;background:var(--surface);white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <button id="toggleSidebar" onclick="toggleSidebar()" title="Toggle sidebar">◀</button>
+    <h2>🤖 Agent Chat</h2>
+    <small id="modelName">LM Studio</small>
+  </div>
+  <section>
+    <h3 onclick="toggleSection(this)">Диалоги<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="newChat()"><span class="icon">➕</span><span>Новый чат</span></button>
+    <button class="sidebar-btn" onclick="exportChat()"><span class="icon">💾</span><span>Экспорт</span></button>
+    <div id="chatList"></div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Память (самообучение)<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <div class="memory-list" id="memoryList"><div style="font-size:11px;color:#484f58;padding:4px">Пусто</div></div>
+    <input type="text" id="newMemory" placeholder="+ Добавить факт..." onkeydown="if(event.key==='Enter')addMemory()">
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Документы<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="importDoc()"><span class="icon">📄</span><span>Загрузить документ</span></button>
+    <button class="sidebar-btn" onclick="showExportData()"><span class="icon">📥</span><span>Экспорт данных</span></button>
+    <div id="docList" style="padding:4px 8px"></div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Проекты (AutoSkill)<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showNewProjectModal()"><span class="icon">🚀</span><span>Новый проект</span></button>
+    <div id="projectList" style="padding:4px 8px;font-size:11px"></div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Flow Editor<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="openFlowEditor()"><span class="icon">🔀</span><span>Открыть редактор</span></button>
+    <div id="flowList" style="padding:4px 8px;font-size:11px"></div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Настройки<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showSettings()"><span class="icon">⚙️</span><span>Параметры</span></button>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Скиллы<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showSkillsPanel()"><span class="icon">🧩</span><span>Все скиллы</span></button>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Agent Teams v3.0<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showCreateTeamModal()"><span class="icon">👥</span><span>Создать команду</span></button>
+    <div id="sidebarTeams" style="padding:4px 8px;font-size:11px;color:#484f58">Загрузка...</div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Проекты (AutoSkill)<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showNewProjectModal()"><span class="icon">🚀</span><span>Новый проект</span></button>
+    <button class="sidebar-btn" onclick="showProjectsPanel()"><span class="icon">📋</span><span>Мои проекты</span></button>
+    <div id="sidebarProjects" style="padding:4px 8px;font-size:11px;color:#484f58">Загрузка...</div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Файлы<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showFileManager()"><span class="icon">📂</span><span>Файловый менеджер</span></button>
+    <button class="sidebar-btn" onclick="showScriptEditor()"><span class="icon">📝</span><span>Редактор скриптов</span></button>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Flow (Автоматизация)<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showFlowPanel()"><span class="icon">🔄</span><span>Мои сценарии</span></button>
+    <button class="sidebar-btn" onclick="showNewFlowModal()"><span class="icon">➕</span><span>Новый сценарий</span></button>
+    <div id="sidebarFlows" style="padding:4px 8px;font-size:11px;color:#484f58">Загрузка...</div>
+    </div>
+  </section>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="header">
+    <div>
+      <h1 id="chatTitle">Новый чат</h1>
+      <small id="statusText">Нажмите ⚙️ для настройки LM Studio</small>
+    </div>
+    <div class="header-right">
+      <div class="status-dot" id="statusDot"></div>
+      <button class="btn-secondary btn-sm" onclick="clearChat()">Очистить</button>
+    </div>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="context-bar sidebar-collapsed-hide">
+    <span id="contextInfo">Контекст: 0 токенов</span>
+    <span id="docContext">Документы: нет</span>
+    <span id="memContext">Память: 0 фактов</span>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <select id="modelSelect" class="model-select" onchange="switchModel(this.value)" title="Выбор модели"></select>
+      <textarea id="msgInput" placeholder="Сообщение... (Enter — отправить, Shift+Enter — новая строка)" rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="btn-primary" id="sendBtn" onclick="sendMessage()">Отправить</button>
+      <button class="btn-stop" id="stopBtn" onclick="stopRequest()" style="display:none">⏹ Стоп</button>
+    </div>
+    <div class="file-attach">
+      <label for="fileInput">📎 Прикрепить документ</label>
+      <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.txt,.rtf,.xls,.xlsx" onchange="handleFileAttach(event)">
+      <span style="color:#484f58">.pdf .doc .docx .txt .rtf .xls .xlsx</span>
+      <div class="attached-files" id="attachedFiles"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>⚙️ Настройки</h3>
+    <label>Провайдер</label>
+    <select id="cfgProvider" onchange="onProviderChange()" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+      <option value="lmstudio">LM Studio (порт 1234)</option>
+      <option value="ollama">Ollama (порт 11434)</option>
+    </select>
+    <label>URL провайдера</label>
+    <input type="text" id="cfgUrl" value="http://127.0.0.1:1234/v1" placeholder="http://127.0.0.1:1234/v1">
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn-secondary btn-sm" onclick="testConnection()" style="flex:1">🔌 Тест</button>
+      <button class="btn-secondary btn-sm" onclick="loadProviderModels()" style="flex:1">🔄 Модели</button>
+    </div>
+    <div id="providerStatus" style="font-size:11px;color:#8b949e;margin-top:4px;min-height:16px"></div>
+    <label>Модель</label>
+    <select id="cfgModelSelect" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+      <option value="">auto-detect</option>
+    </select>
+    <label>Temperature</label>
+    <input type="range" id="cfgTemp" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('tempVal').textContent=this.value">
+    <span id="tempVal" style="font-size:12px;color:var(--accent)">0.7</span>
+    <label>Max Tokens</label>
+    <input type="number" id="cfgMaxTokens" value="4096" min="256" max="32768">
+    <label>System Prompt</label>
+    <textarea id="cfgSystem" rows="6" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px;resize:vertical;font-family:inherit">Ты — OWL, локальный AI-агент. Отвечай на русском.
+
+ПРАВИЛА:
+1. ДЕЙСТВУЙ, а не объясняй. Если просят что-то сделать — делай сразу через инструменты.
+2. Никогда не давай инструкции вместо действий. "Запусти" → запусти. "Сохрани" → сохрани. "Покажи" → покажи.
+3. Не пиши код для обучения моделей — ты inference-only агент.
+4. Не выдумывай библиотеки, модели, бенчмарки. Если не знаешь — скажи.
+5. Проверяй результат после действий (read_file, list_dir).
+6. Используй инструменты в первую очередь — не угадывай.
+
+Инструменты: run_command, read_file, write_file, patch, search_files, list_dir, calculator, web_search, web_fetch, todo_write, todo_read, git, learn_fact, search_memory, list_skills, get_skill, run_skill, file_create, file_delete, file_rename, script_save, script_exec.</textarea>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="saveSettings()">Сохранить</button>
+      <button class="btn-secondary" onclick="closeSettings()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal">
+    <h3>📥 Экспорт данных</h3>
+    <label>Формат</label>
+    <select id="exportFormat">
+      <option value="json">JSON</option>
+      <option value="txt">TXT</option>
+      <option value="md">Markdown</option>
+    </select>
+    <label>Что экспортировать</label>
+    <select id="exportWhat">
+      <option value="chat">Текущий чат</option>
+      <option value="memory">Память (факты)</option>
+      <option value="docs">Извлечённые документы</option>
+      <option value="all">Всё</option>
+    </select>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="doExport()">Скачать</button>
+      <button class="btn-secondary" onclick="document.getElementById('exportModal').classList.remove('show')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Skills Modal -->
+<div class="modal-overlay" id="skillsModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🧩 Скиллы</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('skillsModal').classList.remove('show')">✕</button>
+    </div>
+    <div id="skillsList" style="max-height:60vh;overflow-y:auto"></div>
+    <div id="skillDetail" style="display:none;margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;max-height:30vh;overflow-y:auto;font-size:12px;white-space:pre-wrap"></div>
+  </div>
+</div>
+
+<!-- File Manager Modal -->
+<div class="modal-overlay" id="fileManagerModal">
+  <div class="modal" style="max-width:720px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📂 Файловый менеджер</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn-secondary btn-sm" onclick="fmRefresh()">🔄</button>
+        <button class="btn-secondary btn-sm" onclick="fmNewFile()">📄+</button>
+        <button class="btn-secondary btn-sm" onclick="fmNewDir()">📁+</button>
+        <button class="btn-secondary btn-sm" onclick="document.getElementById('fileManagerModal').classList.remove('show')">✕</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+      <input type="text" id="fmPath" style="flex:1" placeholder="Путь к папке..." onkeydown="if(event.key==='Enter')fmGo()">
+      <button class="btn-primary btn-sm" onclick="fmGo()">Перейти</button>
+      <button class="btn-secondary btn-sm" onclick="fmUp()">⬆️</button>
+    </div>
+    <div id="fmStatus" style="font-size:11px;color:#8b949e;margin-bottom:6px"></div>
+    <div id="fmList" style="max-height:40vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+    <!-- File editor area -->
+    <div id="fmEditor" style="display:none;margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span id="fmEditorTitle" style="font-size:12px;color:var(--accent)"></span>
+        <div style="display:flex;gap:4px">
+          <button class="btn-primary btn-sm" onclick="fmSaveFile()">💾 Сохранить</button>
+          <button class="btn-green btn-sm" onclick="fmRunFile()">▶️ Запустить</button>
+          <button class="btn-secondary btn-sm" onclick="fmCloseEditor()">✕</button>
+        </div>
+      </div>
+      <textarea id="fmEditorArea" style="width:100%;height:200px;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:monospace;font-size:12px;resize:vertical" placeholder="Содержимое файла..."></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- Script Editor Modal -->
+<div class="modal-overlay" id="scriptEditorModal">
+  <div class="modal" style="max-width:720px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📝 Редактор скриптов</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('scriptEditorModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input type="text" id="scriptPath" style="flex:1" placeholder="Путь скрипта (напр. tools/my_script.py)">
+      <button class="btn-secondary btn-sm" onclick="scriptLoad()">📂 Загрузить</button>
+      <button class="btn-secondary btn-sm" onclick="scriptNew()">📄 Новый</button>
+    </div>
+    <textarea id="scriptEditorArea" style="width:100%;height:300px;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:monospace;font-size:12px;resize:vertical" placeholder="# Python script..."></textarea>
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+      <button class="btn-primary" onclick="scriptSave()">💾 Сохранить</button>
+      <button class="btn-green" onclick="scriptRun()">▶️ Запустить</button>
+      <span style="font-size:11px;color:#8b949e;margin-left:8px">Таймаут:</span>
+      <select id="scriptTimeout" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+        <option value="10">10s</option>
+        <option value="30" selected>30s</option>
+        <option value="60">60s</option>
+        <option value="120">120s</option>
+      </select>
+    </div>
+    <div id="scriptOutput" style="margin-top:10px;max-height:200px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:11px;white-space:pre-wrap;display:none"></div>
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="newProjectModal">
+  <div class="modal" style="max-width:520px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🚀 Новый проект (AutoSkill)</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('newProjectModal').classList.remove('show')">✕</button>
+    </div>
+    <label>Название проекта</label>
+    <input type="text" id="projName" placeholder="my_blog" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <label>Тип проекта</label>
+    <select id="projType" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+      <option value="python">🐍 Python — main.py, requirements.txt, README.md</option>
+      <option value="web">🌐 Web — index.html, style.css, app.js</option>
+      <option value="data">📊 Data Science — notebook.ipynb, data/, output/</option>
+    </select>
+    <label>Описание (необязательно)</label>
+    <input type="text" id="projDesc" placeholder="Описание проекта" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <div id="projResult" style="margin-top:12px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;white-space:pre-wrap;display:none"></div>
+    <div class="modal-btns">
+      <button class="btn-green" onclick="createProject()">Создать проект</button>
+      <button class="btn-secondary" onclick="document.getElementById('newProjectModal').classList.remove('show')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Projects List Modal -->
+<div class="modal-overlay" id="projectsModal">
+  <div class="modal" style="max-width:600px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📋 Мои проекты</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('projectsModal').classList.remove('show')">✕</button>
+    </div>
+    <div id="projectsList" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- Flow List Modal -->
+<div class="modal-overlay" id="flowModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🔄 Flow — Автоматизация</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn-primary btn-sm" onclick="showNewFlowModal()">➕ Новый</button>
+        <button class="btn-secondary btn-sm" onclick="document.getElementById('flowModal').classList.remove('show')">✕</button>
+      </div>
+    </div>
+    <div id="flowsList" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- New Flow Modal -->
+<div class="modal-overlay" id="newFlowModal">
+  <div class="modal" style="max-width:600px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">➕ Новый сценарий</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('newFlowModal').classList.remove('show')">✕</button>
+    </div>
+    <label>ID (уникальный, латиница)</label>
+    <input type="text" id="flowId" placeholder="deploy_site" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <label>Название</label>
+    <input type="text" id="flowName" placeholder="Развернуть сайт" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <label>Описание</label>
+    <input type="text" id="flowDesc" placeholder="Что делает сценарий..." style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <label>Шаги (JSON array)</label>
+    <textarea id="flowSteps" rows="8" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px;font-family:monospace;resize:vertical" placeholder='[{"action":"file_mkdir","path":"/tmp/site"},{"action":"file_create","path":"/tmp/site/index.html","content":"&lt;h1&gt;Hello&lt;/h1&gt;"}]'></textarea>
+    <div style="font-size:11px;color:#8b949e;margin-top:4px">
+      Действия: file_create, file_write, file_read, file_delete, file_mkdir, script_exec, command, set_variable, api_call, wait, notify.
+      Переменные: $VAR. <a href="#" onclick="document.getElementById('flowSteps').value='[{\\"action\\":\\"file_mkdir\\",\\"path\\":\\"\\/tmp\\/site\\"},{\\"action\\":\\"file_create\\",\\"path\\":\\"\\/tmp\\/site\\/index.html\\",\\"content\\":\\"<h1>Hello</h1>\\"},{\\"action\\":\\"script_exec\\",\\"code\\":\\"echo > \\/tmp\\/site\\/done.flag\\"}]';return false" style="color:var(--accent)">Пример</a>
+    </div>
+    <div id="flowResult" style="margin-top:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;display:none"></div>
+    <div class="modal-btns">
+      <button class="btn-green" onclick="createFlow()">Создать сценарий</button>
+      <button class="btn-secondary" onclick="document.getElementById('newFlowModal').classList.remove('show')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== STATE ====================
+const DB_NAME = 'agent_chat_db';
+let db;
+let state = {
+  chats: [],
+  currentChat: -1,
+  memory: [],
+  documents: {},
+  settings: {
+    url: 'http://127.0.0.1:1234/v1',
+    provider: 'lmstudio',
+    model: '',
+    temperature: 0.7,
+    maxTokens: 4096,
+    systemPrompt: 'Ты — OWL, локальный AI-агент. Отвечай на русском.\n\nПРАВИЛА:\n1. ДЕЙСТВУЙ, а не объясняй. Если просят что-то сделать — делай сразу через инструменты.\n2. Никогда не давай инструкции вместо действий.\n3. Не пиши код для обучения моделей — ты inference-only агент.\n4. Не выдумывай библиотеки, модели, бенчмарки.\n5. Проверяй результат после действий.\n6. Используй инструменты в первую очередь.'
+  },
+  attachedFiles: [],
+  sidebarOpen: true
+};
+
+// ==================== IndexedDB ====================
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('chats')) db.createObjectStore('chats', {keyPath:'id', autoIncrement:true});
+      if (!db.objectStoreNames.contains('memory')) db.createObjectStore('memory', {keyPath:'id', autoIncrement:true});
+      if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', {keyPath:'name'});
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = e => reject(e);
+  });
+}
+
+function dbPut(store, data) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(data);
+    tx.oncomplete = res;
+    tx.onerror = rej;
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = rej;
+  });
+}
+
+function dbDelete(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = res;
+    tx.onerror = rej;
+  });
+}
+
+function dbClear(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).clear();
+    tx.oncomplete = res;
+    tx.onerror = rej;
+  });
+}
+
+// ==================== INIT ====================
+async function init() {
+  // Load settings from localStorage
+  const saved = localStorage.getItem('agent_settings');
+  if (saved) state.settings = {...state.settings, ...JSON.parse(saved)};
+
+  await initDB();
+
+  // Load memory
+  state.memory = await dbGetAll('memory');
+  renderMemory();
+
+  // Load documents
+  const docs = await dbGetAll('documents');
+  docs.forEach(d => state.documents[d.name] = d);
+  renderDocList();
+
+  // Load chats
+  state.chats = await dbGetAll('chats');
+  renderChatList();
+
+  // Auto-load last chat
+  if (state.chats.length > 0) {
+    loadChat(state.chats.length - 1);
+  }
+
+  // Apply settings to modal
+  document.getElementById('cfgUrl').value = state.settings.url;
+  if (document.getElementById('cfgProvider')) {
+    document.getElementById('cfgProvider').value = state.settings.provider || 'lmstudio';
+  }
+  if (document.getElementById('cfgModelSelect')) {
+    // Will be populated by testConnection; set value if already known
+    document.getElementById('cfgModelSelect').innerHTML = '<option value="">auto-detect</option>';
+    if (state.settings.model) {
+      const opt = document.createElement('option');
+      opt.value = state.settings.model;
+      opt.textContent = state.settings.model;
+      document.getElementById('cfgModelSelect').appendChild(opt);
+      document.getElementById('cfgModelSelect').value = state.settings.model;
+    }
+  }
+  document.getElementById('cfgTemp').value = state.settings.temperature;
+  document.getElementById('tempVal').textContent = state.settings.temperature;
+  document.getElementById('cfgMaxTokens').value = state.settings.maxTokens;
+  document.getElementById('cfgSystem').value = state.settings.systemPrompt;
+
+  updateContextBar();
+  restoreSections();
+  // Switch server-side provider to match saved settings
+  await switchProviderFromSettings();
+  await testConnection();
+}
+
+// ==================== SETTINGS ====================
+function showSettings() {
+  // Android WebView — open native settings
+  if (window.Android && typeof window.Android.openSettings === 'function') {
+    window.Android.openSettings();
+    return;
+  }
+  // Desktop — show modal
+  document.getElementById('settingsModal').classList.add('show');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+
+async function saveSettings() {
+  state.settings.url = document.getElementById('cfgUrl').value.trim();
+  state.settings.model = document.getElementById('cfgModelSelect').value.trim();
+  state.settings.provider = document.getElementById('cfgProvider').value.trim();
+  state.settings.temperature = parseFloat(document.getElementById('cfgTemp').value);
+  state.settings.maxTokens = parseInt(document.getElementById('cfgMaxTokens').value);
+  state.settings.systemPrompt = document.getElementById('cfgSystem').value;
+  localStorage.setItem('agent_settings', JSON.stringify(state.settings));
+  closeSettings();
+  // Switch server-side provider first, then test
+  await switchProviderFromSettings();
+  testConnection();
+}
+
+// Switch server-side provider to match state.settings
+async function switchProviderFromSettings() {
+  let srvBase;
+  try {
+    const lmUrl = new URL(state.settings.url);
+    srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+  } catch (e) {
+    srvBase = 'http://127.0.0.1:7860';
+  }
+  const provider = state.settings.provider || 'lmstudio';
+  const url = state.settings.url;
+  const api_key = provider === 'ollama' ? 'ollama' : 'lm-studio';
+  try {
+    await fetch(srvBase + '/api/provider/switch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({provider, url, api_key}),
+    });
+  } catch (e) {
+    console.warn('switchProviderFromSettings:', e);
+  }
+}
+
+// ==================== PROJECTS (AutoSkill) ====================
+async function refreshProjects() {
+  try {
+    const r = await fetch(state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860/api/projects');
+    if (!r.ok) return;
+    const data = await r.json();
+    const projects = data.projects || [];
+    // Sidebar preview
+    const sb = document.getElementById('sidebarProjects');
+    if (sb) {
+      if (projects.length === 0) {
+        sb.innerHTML = 'Нет проектов';
+      } else {
+        sb.innerHTML = projects.slice(0, 5).map(p =>
+          `<div style="padding:2px 0"><span style="color:var(--green)">●</span> ${p.name} <span style="color:#484f58">(${p.type})</span></div>`
+        ).join('');
+        if (projects.length > 5) sb.innerHTML += `<div style="color:#484f58">...и ещё ${projects.length - 5}</div>`;
+      }
+    }
+  } catch (e) {
+    console.warn('refreshProjects:', e);
+  }
+}
+
+function showNewProjectModal() {
+  document.getElementById('newProjectModal').classList.add('show');
+}
+
+function showProjectsPanel() {
+  loadProjectsList();
+  document.getElementById('projectsModal').classList.add('show');
+}
+
+async function loadProjectsList() {
+  try {
+    const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+    const r = await fetch(srvBase + '/api/projects');
+    const data = await r.json();
+    const projects = data.projects || [];
+    const el = document.getElementById('projectsList');
+    if (projects.length === 0) {
+      el.innerHTML = '<div style="color:#484f58;text-align:center;padding:24px">Проектов ещё нет.<br>Нажмите "🚀 Новый проект" чтобы создать.</div>';
+      return;
+    }
+    el.innerHTML = projects.map(p => {
+      const icon = p.type === 'python' ? '🐍' : p.type === 'web' ? '🌐' : '📊';
+      const statusColor = p.status === 'created' ? 'var(--green)' : p.status === 'running' ? 'var(--yellow)' : 'var(--text)';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+        <div>
+          <div style="font-weight:500">${icon} ${p.name}</div>
+          <div style="font-size:11px;color:#8b949e">${p.type} · ${p.description || '—'} · <span style="color:${statusColor}">${p.status}</span></div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn-secondary btn-sm" onclick="deleteProject('${p.name}')" title="Удалить">🗑</button>
+          <button class="btn-primary btn-sm" onclick="fmGoPath('projects/${p.name}')" title="Открыть">📂</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('projectsList').innerHTML = `<div style="color:var(--red)">Ошибка: ${e.message}</div>`;
+  }
+}
+
+async function createProject() {
+  const name = document.getElementById('projName').value.trim();
+  const type = document.getElementById('projType').value;
+  const desc = document.getElementById('projDesc').value.trim();
+  const resEl = document.getElementById('projResult');
+
+  if (!name) {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Введите название проекта';
+    return;
+  }
+
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--text)';
+    resEl.textContent = 'Создание проекта...';
+
+    const r = await fetch(srvBase + '/api/launch_project', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, type, description: desc})
+    });
+    const data = await r.json();
+    if (data.ok) {
+      resEl.style.color = 'var(--green)';
+      resEl.textContent = data.result;
+      await refreshProjects();
+      // Clear form
+      document.getElementById('projName').value = '';
+      document.getElementById('projDesc').value = '';
+    } else {
+      resEl.style.color = 'var(--red)';
+      resEl.textContent = data.error || 'Ошибка';
+    }
+  } catch (e) {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Ошибка соединения с сервером';
+  }
+}
+
+async function deleteProject(name) {
+  if (!confirm(`Удалить проект "${name}"?`)) return;
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    const r = await fetch(srvBase + '/api/project/delete?name=' + encodeURIComponent(name));
+    const data = await r.json();
+    if (data.ok) {
+      loadProjectsList();
+      refreshProjects();
+    }
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+// ==================== SIDEBAR SECTIONS ====================
+function toggleSection(h3) {
+  const section = h3.parentElement;
+  section.classList.toggle('collapsed');
+  // Save state
+  const name = h3.textContent.replace(/[▼▲]/g, '').trim();
+  const collapsed = section.classList.contains('collapsed');
+  localStorage.setItem('section_' + name, collapsed ? '1' : '0');
+}
+
+// Restore section states on load
+function restoreSections() {
+  document.querySelectorAll('.sidebar section h3').forEach(h3 => {
+    const name = h3.textContent.replace(/[▼▲]/g, '').trim();
+    if (localStorage.getItem('section_' + name) === '1') {
+      h3.parentElement.classList.add('collapsed');
+    }
+  });
+}
+
+// ==================== FLOW (AutoFlow) ====================
+async function refreshFlows() {
+  try {
+    const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+    const r = await fetch(srvBase + '/api/flow/list');
+    if (!r.ok) return;
+    const data = await r.json();
+    const flows = data.flows || [];
+    const sb = document.getElementById('sidebarFlows');
+    if (!sb) return;
+    if (flows.length === 0) {
+      sb.innerHTML = 'Нет сценариев';
+    } else {
+      sb.innerHTML = flows.slice(0, 5).map(f =>
+        `<div style="padding:2px 0;cursor:pointer" onclick="runFlow('${f.id}')"><span style="color:var(--accent)">▶</span> ${f.name}</div>`
+      ).join('');
+      if (flows.length > 5) sb.innerHTML += `<div style="color:#484f58">...и ещё ${flows.length - 5}</div>`;
+    }
+  } catch (e) {
+    console.warn('refreshFlows:', e);
+  }
+}
+
+function showFlowPanel() {
+  loadFlowsList();
+  document.getElementById('flowModal').classList.add('show');
+}
+
+function showNewFlowModal() {
+  document.getElementById('newFlowModal').classList.add('show');
+}
+
+async function loadFlowsList() {
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    const r = await fetch(srvBase + '/api/flow/list');
+    const data = await r.json();
+    const flows = data.flows || [];
+    const el = document.getElementById('flowsList');
+    if (flows.length === 0) {
+      el.innerHTML = '<div style="color:#484f58;text-align:center;padding:24px">Сценариев ещё нет.<br>Нажмите \"➕ Новый сценарий\" чтобы создать.</div>';
+      return;
+    }
+    el.innerHTML = flows.map(f => {
+      const steps = (f.steps || f.steps_count) ? `<span style="color:#484f58">(${f.steps_count || f.steps.length} шагов)</span>` : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+        <div>
+          <div style="font-weight:500">🔄 ${f.name} ${steps}</div>
+          <div style="font-size:11px;color:#8b949e">${f.description || '—'}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn-green btn-sm" onclick="runFlow('${f.id}')" title="Запустить">▶</button>
+          <button class="btn-secondary btn-sm" onclick="flowHistory('${f.id}')" title="История">📋</button>
+          <button class="btn-secondary btn-sm" onclick="deleteFlow('${f.id}')" title="Удалить">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('flowsList').innerHTML = `<div style="color:var(--red)">Ошибка: ${e.message}</div>`;
+  }
+}
+
+async function createFlow() {
+  const name = document.getElementById('flowName').value.trim();
+  const flowId = document.getElementById('flowId').value.trim();
+  const desc = document.getElementById('flowDesc').value.trim();
+  const stepsStr = document.getElementById('flowSteps').value.trim();
+  const resEl = document.getElementById('flowResult');
+
+  if (!name || !flowId || !stepsStr) {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Заполните ID, название и шаги';
+    return;
+  }
+
+  let steps;
+  try {
+    steps = JSON.parse(stepsStr);
+  } catch (e) {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Ошибка JSON в шагах: ' + e.message;
+    return;
+  }
+
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--text)';
+    resEl.textContent = 'Создание...';
+    const r = await fetch(srvBase + '/api/flow/create', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: flowId, name, description: desc, steps})
+    });
+    const data = await r.json();
+    if (data.id) {
+      resEl.style.color = 'var(--green)';
+      resEl.textContent = `Сценарий "${name}" создан (${steps.length} шагов)`;
+      document.getElementById('flowName').value = '';
+      document.getElementById('flowId').value = '';
+      document.getElementById('flowDesc').value = '';
+      document.getElementById('flowSteps').value = '';
+      await refreshFlows();
+    } else {
+      resEl.style.color = 'var(--red)';
+      resEl.textContent = data.error || 'Ошибка';
+    }
+  } catch (e) {
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--red)';
+    resEl.textContent = 'Ошибка соединения: ' + e.message;
+  }
+}
+
+async function runFlow(flowId) {
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    const r = await fetch(srvBase + '/api/flow/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: flowId})
+    });
+    const data = await r.json();
+    let msg = `🔄 Flow "${flowId}" → ${data.status}\n`;
+    if (data.log) msg += data.log.join('\n');
+    if (data.error) msg += `\nОшибка: ${data.error}`;
+    addSystemMessage(msg);
+    await refreshFlows();
+  } catch (e) {
+    addSystemMessage('Ошибка запуска: ' + e.message);
+  }
+}
+
+async function deleteFlow(flowId) {
+  if (!confirm(`Удалить сценарий "${flowId}"?`)) return;
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    await fetch(srvBase + '/api/flow/delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: flowId})
+    });
+    loadFlowsList();
+    await refreshFlows();
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+async function flowHistory(flowId) {
+  const srvBase = state.settings.url.replace(/\/v\d+$/, '').replace(/:\d+$/, '') + ':7860';
+  try {
+    const r = await fetch(srvBase + '/api/flow/history?id=' + flowId);
+    const data = await r.json();
+    const hist = data.history || [];
+    if (hist.length === 0) {
+      addSystemMessage(`📋 История "${flowId}": пусто`);
+      return;
+    }
+    let msg = `📋 История "${flowId}" (${hist.length} записей):\n`;
+    hist.forEach(h => {
+      const icon = h.status === 'success' ? '✅' : '❌';
+      msg += `${icon} [шаг ${h.step_index}] ${h.action} → ${h.status}\n`;
+    });
+    addSystemMessage(msg);
+  } catch (e) {
+    addSystemMessage('Ошибка: ' + e.message);
+  }
+}
+
+// Load flows on init
+setTimeout(refreshFlows, 1000);
+
+// ==================== MODELS ====================
+async function loadModels() {
+  try {
+    let srvBase;
+    try {
+      const lmUrl = new URL(state.settings.url);
+      srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+    } catch (e) {
+      srvBase = 'http://127.0.0.1:7860';
+    }
+    const r = await fetch(srvBase + '/api/providers');
+    if (!r.ok) return;
+    const data = await r.json();
+    const models = data.models || [];
+    // Update header model select (quick switch)
+    const sel = document.getElementById('modelSelect');
+    if (sel) {
+      sel.innerHTML = '';
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m.length > 25 ? m.substring(0, 25) + '…' : m;
+        if (m === data.active_model) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+    if (models.length > 0 && !state.settings.model) {
+      state.settings.model = data.active_model || models[0];
+    }
+  } catch (e) {
+    console.warn('loadModels:', e);
+  }
+}
+
+function switchModel(model) {
+  if (!model) return;
+  state.settings.model = model;
+  localStorage.setItem("agent_settings", JSON.stringify(state.settings));
+  // Tell server to switch (non-blocking)
+  let srvBase;
+  try {
+    const lmUrl = new URL(state.settings.url);
+    srvBase = lmUrl.protocol + "//" + lmUrl.hostname + ":7860";
+  } catch (e) {
+    srvBase = "http://127.0.0.1:7860";
+  }
+  // Fire-and-forget: don't await, don't block UI
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 3000); // 3s max
+  fetch(srvBase + "/api/switch_model", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({model}),
+    signal: ctrl.signal,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+async function testConnection() {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  const statusEl = document.getElementById('providerStatus');
+  dot.className = 'status-dot loading';
+  txt.textContent = 'Подключение...';
+  if (statusEl) statusEl.textContent = 'Проверка...';
+  try {
+    // Use server endpoint /api/provider/test to avoid CORS issues
+    let srvBase;
+    try {
+      const lmUrl = new URL(document.getElementById('cfgUrl').value);
+      srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+    } catch (e) {
+      srvBase = 'http://127.0.0.1:7860';
+    }
+    const testUrl = document.getElementById('cfgUrl').value;
+    const provider = document.getElementById('cfgProvider').value;
+    const r = await fetch(srvBase + '/api/provider/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: testUrl, api_key: provider === 'ollama' ? 'ollama' : 'lm-studio'}),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const models = data.models || [];
+      const modelName = models.length > 0 ? models[0].split('/').pop() : 'connected';
+      document.getElementById('modelName').textContent = modelName;
+      dot.className = 'status-dot ok';
+      txt.textContent = `Подключено · ${models.length} моделей (${provider})`;
+      if (statusEl) statusEl.textContent = `✓ OK — ${models.length} моделей найдено`;
+      // Update model select
+      _populateModelSelect(models);
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (e) {
+    dot.className = 'status-dot';
+    txt.textContent = 'Нет подключения: ' + e.message;
+    if (statusEl) statusEl.textContent = '✗ ' + e.message;
+  }
+}
+
+function onProviderChange() {
+  const provider = document.getElementById('cfgProvider').value;
+  const urlInput = document.getElementById('cfgUrl');
+  if (provider === 'ollama' && urlInput.value.includes('1234')) {
+    urlInput.value = 'http://127.0.0.1:11434/v1';
+  } else if (provider === 'lmstudio' && urlInput.value.includes('11434')) {
+    urlInput.value = 'http://127.0.0.1:1234/v1';
+  }
+}
+
+async function loadProviderModels() {
+  const statusEl = document.getElementById('providerStatus');
+  if (statusEl) statusEl.textContent = 'Загрузка моделей...';
+  try {
+    let srvBase;
+    try {
+      const lmUrl = new URL(document.getElementById('cfgUrl').value);
+      srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+    } catch (e) {
+      srvBase = 'http://127.0.0.1:7860';
+    }
+    const provider = document.getElementById('cfgProvider').value;
+    const r = await fetch(srvBase + '/api/providers', {signal: AbortSignal.timeout(8000)});
+    if (r.ok) {
+      const data = await r.json();
+      const models = data.models || [];
+      _populateModelSelect(models);
+      if (statusEl) statusEl.textContent = `✓ ${models.length} моделей (${data.active_provider || provider})`;
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '✗ ' + e.message;
+  }
+}
+
+function _populateModelSelect(models) {
+  const sel = document.getElementById("cfgModelSelect");
+  if (!sel) return;
+  const currentVal = sel.value;
+  // Only rebuild if models actually changed
+  const existing = Array.from(sel.options).map(o => o.value).join(",");
+  const newIds = models.join(",");
+  if (existing === newIds && sel.options.length > 0) return;
+  
+  sel.innerHTML = '<option value="">auto-detect</option>';
+  for (const m of models) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m.length > 60 ? m.slice(0, 60) + "..." : m;
+    sel.appendChild(opt);
+  }
+  if (currentVal && models.includes(currentVal)) {
+    sel.value = currentVal;
+  } else if (models.length > 0 && !currentVal) {
+    sel.value = models[0];
+  }
+}
+
+// ==================== CHAT ====================
+function newChat() {
+  state.currentChat = -1;
+  state.memory = [];
+  state.documents = {};
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('chatTitle').textContent = 'Новый чат';
+  addSystemMessage('Новый чат создан. Настройте LM Studio через ⚙️ если ещё не сделали.');
+  updateContextBar();
+  // Reset server-side conversation too
+  let srvBase;
+  try {
+    const lmUrl = new URL(state.settings.url);
+    srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+  } catch (e) {
+    srvBase = 'http://127.0.0.1:7860';
+  }
+  fetch(srvBase + '/api/new_session', {method: 'POST'});
+}
+
+async function deleteChat(idx) {
+  if (!state.chats[idx]) return;
+  if (state.chats.length <= 1) { alert('Нельзя удалить последний чат.'); return; }
+  state.chats.splice(idx, 1);
+  if (state.currentChat === idx) {
+    state.currentChat = -1;
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('chatTitle').textContent = 'Новый чат';
+  } else if (state.currentChat > idx) {
+    state.currentChat--;
+  }
+  renderChatList();
+}
+
+function loadChat(idx) {
+  state.currentChat = idx;
+  const chat = state.chats[idx];
+  document.getElementById('chatTitle').textContent = chat.title || 'Чат';
+  document.getElementById('messages').innerHTML = '';
+  chat.messages.forEach(m => renderMessage(m.role, m.content, m.time, false));
+  scrollBottom();
+  renderChatList();
+}
+
+async function saveCurrentChat() {
+  if (state.currentChat >= 0) {
+    // Clone to avoid DataCloneError — strip DOM references, functions, etc
+    const chat = JSON.parse(JSON.stringify(state.chats[state.currentChat]));
+    state.chats[state.currentChat].messages = collectMessages();
+    await dbPut('chats', chat);
+  }
+}
+
+function collectMessages() {
+  const msgs = [];
+  document.querySelectorAll('.msg[data-role]').forEach(el => {
+    msgs.push({
+      role: el.dataset.role,
+      content: el.dataset.content || el.innerText,
+      time: el.dataset.time || ''
+    });
+  });
+  return msgs;
+}
+
+function renderChatList() {
+  const el = document.getElementById('chatList');
+  el.innerHTML = state.chats.map((c, i) => `
+    <div style="display:flex;align-items:center;gap:2px">
+      <button class="sidebar-btn" onclick="loadChat(${i})" style="flex:1;${i===state.currentChat?'background:rgba(88,166,255,0.15)':''}">
+        <span class="icon">💬</span><span>${c.title || 'Чат ' + (i+1)}</span>
+      </button>
+      <button class="sidebar-btn" style="width:28px;min-width:28px;padding:4px" title="Удалить чат" onclick="deleteChat(${i})">🗑</button>
+    </div>`).join('');
+}
+
+function clearChat() {
+  if (state.currentChat >= 0) {
+    state.chats[state.currentChat].messages = [];
+  }
+  document.getElementById('messages').innerHTML = '';
+}
+
+function exportChat() {
+  const data = state.currentChat >= 0 ? state.chats[state.currentChat] : {messages: collectMessages()};
+  downloadFile('chat.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+// ==================== MESSAGES ====================
+function addSystemMessage(text) {
+  renderMessage('system', text, new Date().toLocaleTimeString('ru'), true);
+}
+
+function renderMessage(role, content, time, save = true) {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.dataset.role = role;
+  div.dataset.content = content;
+  div.dataset.time = time;
+
+  let html = '';
+  if (role !== 'system') {
+    html += `<div class="role-label">${role === 'user' ? '👤 Вы' : '🤖 Агент'}</div>`;
+  }
+  // Content container for streaming updates
+  const contentId = 'msg-c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  div.dataset.contentId = contentId;
+  html += `<div class="msg-content" id="${contentId}">${formatContent(content)}</div>`;
+  if (role !== 'system') {
+    html += `<div class="timestamp">${time}</div>`;
+  }
+  div.innerHTML = html;
+  wrap.appendChild(div);
+  if (save) scrollBottom();
+  return div;
+}
+
+function appendToMsg(div, text) {
+  /* Append raw text to an existing message div (for streaming). */
+  const contentEl = div.querySelector('.msg-content');
+  if (!contentEl) return;
+  // Append text node (safe, no HTML injection)
+  contentEl.insertAdjacentHTML('beforeend', formatContent(text));
+  // Update stored content
+  div.dataset.content = (div.dataset.content || '') + text;
+  scrollBottom();
+}
+
+function formatContent(text) {
+  // Escape HTML
+  let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Code blocks
+  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return h;
+}
+
+function scrollBottom() {
+  const el = document.getElementById('messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+function showThinking() {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg agent';
+  div.id = 'thinking';
+  div.innerHTML = `<div class="role-label">🤖 Агент</div><div class="thinking"><span></span><span></span><span></span></div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+}
+
+function hideThinking() {
+  const el = document.getElementById('thinking');
+  if (el) el.remove();
+}
+
+// ==================== SEND ====================
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+}
+
+// AbortController for STOP button
+let currentAbort = null;
+let currentStreamReader = null;
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text && state.attachedFiles.length === 0) return;
+
+  const time = new Date().toLocaleTimeString('ru');
+  const sendBtn = document.getElementById('sendBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  sendBtn.disabled = true;
+  sendBtn.style.display = 'none';
+  stopBtn.style.display = '';
+
+  // Build message content
+  let fullContent = text;
+
+  // Process attached files
+  for (const file of state.attachedFiles) {
+    const extracted = await extractDocument(file);
+    if (extracted) {
+      const docName = file.name;
+      state.documents[docName] = {name: docName, content: extracted.text, meta: extracted.meta, time: new Date().toISOString()};
+      await dbPut('documents', state.documents[docName]);
+      renderDocList();
+      if (text) {
+        fullContent += `\n\n[Документ: ${docName}]\n${extracted.text.substring(0, 3000)}${extracted.text.length > 3000 ? '...' : ''}`;
+      } else {
+        fullContent = `Проанализируй документ "${docName}":\n\n${extracted.text.substring(0, 5000)}${extracted.text.length > 5000 ? '...' : ''}`;
+      }
+    }
+  }
+
+  // Show user message
+  const displayContent = text || `📎 ${state.attachedFiles.map(f=>f.name).join(', ')}`;
+  renderMessage('user', displayContent, time);
+  input.value = '';
+  input.style.height = 'auto';
+  state.attachedFiles = [];
+  renderAttachedFiles();
+
+  // Save to chat
+  if (state.currentChat < 0) {
+    const newChat = {title: text.substring(0, 40) || 'Чат', messages: [], created: new Date().toISOString()};
+    const id = await dbPut('chats', newChat);
+    newChat.id = id;
+    state.chats.push(newChat);
+    state.currentChat = state.chats.length - 1;
+    document.getElementById('chatTitle').textContent = newChat.title;
+    renderChatList();
+  }
+
+  // Build context for AI
+  const memContext = state.memory.length > 0
+    ? '\n\n[Память — сохранённые факты]:\n' + state.memory.map((m, i) => `${i+1}. ${m.text}`).join('\n')
+    : '';
+
+  const docContext = Object.keys(state.documents).length > 0
+    ? '\n\n[Загруженные документы]:\n' + Object.entries(state.documents).map(([name, d]) =>
+        `--- ${name} ---\n${d.content.substring(0, 2000)}`).join('\n\n')
+    : '';
+
+  const userMessage = fullContent + memContext + docContext;
+
+  // Create AbortController for stop
+  currentAbort = new AbortController();
+
+  try {
+    // Derive server base URL from LM URL
+    let srvBase;
+    try {
+      const lmUrl = new URL(state.settings.url);
+      srvBase = lmUrl.protocol + '//' + lmUrl.hostname + ':7860';
+    } catch (e) {
+      srvBase = 'http://127.0.0.1:7860';
+    }
+
+    // --- SSE streaming via /api/chat/stream ---
+    await _streamChat(srvBase, userMessage, time);
+    await autoLearn(fullContent, window._lastReply || '');
+
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      renderMessage('system', '⏹ Запрос отменён', time);
+    } else {
+      renderMessage('agent', `Ошибка: ${e.message}`, time);
+    }
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.style.display = '';
+    stopBtn.style.display = 'none';
+    currentAbort = null;
+    currentStreamReader = null;
+    updateContextBar();
+
+    if (state.currentChat >= 0) {
+      state.chats[state.currentChat].messages = collectMessages();
+      await dbPut('chats', JSON.parse(JSON.stringify(state.chats[state.currentChat])));
+      renderChatList();
+    }
+  }
+}
+
+async function _streamChat(srvBase, userMessage, time) {
+  /* Send message to /api/chat/stream and render SSE events in real-time. */
+  const res = await fetch(srvBase + '/api/chat/stream', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    signal: currentAbort.signal,
+    body: JSON.stringify({message: userMessage})
+  });
+  hideThinking();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`SSE ${res.status}: ${err}`);
+  }
+
+  const reader = res.body.getReader();
+  currentStreamReader = reader;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  // The agent message element — we'll append chunks to it
+  let agentMsgId = null;
+
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, {stream: true});
+
+    // Process complete SSE lines
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete last line
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+      let event;
+      try { event = JSON.parse(jsonStr); } catch(e) { continue; }
+
+      switch (event.type) {
+        case 'text':
+          if (!agentMsgId) {
+            agentMsgId = renderMessage('agent', '', time);
+          }
+          appendToMsg(agentMsgId, event.content);
+          break;
+        case 'tool_start':
+          if (!agentMsgId) {
+            agentMsgId = renderMessage('agent', '', time);
+          }
+          appendToMsg(agentMsgId, `\n\n[Tool: ${event.name}]`);
+          break;
+        case 'tool_end':
+          appendToMsg(agentMsgId, ` → ${event.result_preview || 'ok'}`);
+          break;
+        case 'done':
+          if (!agentMsgId && event.session_id) {
+            agentMsgId = renderMessage('agent', '', time);
+          }
+          break;
+        case 'error':
+          if (!agentMsgId) {
+            agentMsgId = renderMessage('agent', '', time);
+          }
+          appendToMsg(agentMsgId, `\n⚠ ${event.content}`);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+}
+
+function stopRequest() {
+  if (currentAbort) {
+    currentAbort.abort();
+  }
+  if (currentStreamReader) {
+    currentStreamReader.cancel();
+  }
+}
+
+// ==================== DOCUMENT EXTRACTION ====================
+async function extractDocument(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const text = await file.text();
+
+  try {
+    switch(ext) {
+      case 'txt':
+        return {text: text, meta: {format: 'txt', chars: text.length}};
+
+      case 'rtf': {
+        // Strip RTF control words
+        const stripped = text.replace(/\\[a-z]+\d*\s?/gi, '').replace(/[{}]/g, '');
+        return {text: stripped, meta: {format: 'rtf', chars: stripped.length}};
+      }
+
+      case 'docx': {
+        // Parse DOCX (ZIP with XML)
+        const JSZip = await loadJSZip();
+        const zip = await JSZip.loadAsync(file);
+        const xml = await zip.file('word/document.xml').async('string');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xml, 'text/xml');
+        const paragraphs = doc.querySelectorAll('w\\:p, p');
+        let result = [];
+        paragraphs.forEach(p => {
+          const texts = p.querySelectorAll('w\\:t, t');
+          let line = '';
+          texts.forEach(t => line += t.textContent);
+          if (line.trim()) result.push(line);
+        });
+        return {text: result.join('\n'), meta: {format: 'docx', paragraphs: result.length}};
+      }
+
+      case 'xlsx': {
+        const XLSX = await loadXLSX();
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data, {type: 'array'});
+        let allText = [];
+        wb.SheetNames.forEach(name => {
+          const ws = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_csv(ws);
+          allText.push(`[Лист: ${name}]\n${rows}`);
+        });
+        return {text: allText.join('\n\n'), meta: {format: 'xlsx', sheets: wb.SheetNames}};
+      }
+
+      case 'xls': {
+        // For .xls we can't parse in browser easily — send raw text attempt
+        const XLSX = await loadXLSX();
+        try {
+          const data = await file.arrayBuffer();
+          const wb = XLSX.read(data, {type: 'array'});
+          let allText = [];
+          wb.SheetNames.forEach(name => {
+            const ws = wb.Sheets[name];
+            const rows = XLSX.utils.sheet_to_csv(ws);
+            allText.push(`[Лист: ${name}]\n${rows}`);
+          });
+          return {text: allText.join('\n\n'), meta: {format: 'xls', sheets: wb.SheetNames}};
+        } catch {
+          return {text: '[.xls формат требует серверной обработки. Используйте .xlsx]', meta: {format: 'xls', error: true}};
+        }
+      }
+
+      case 'pdf': {
+        const pdfjsLib = await loadPDFJS();
+        const data = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({data}).promise;
+        let allText = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const text = content.items.map(item => item.str).join(' ');
+          allText.push(`[Стр. ${i}]\n${text}`);
+        }
+        return {text: allText.join('\n\n'), meta: {format: 'pdf', pages: pdf.numPages}};
+      }
+
+      case 'doc': {
+        // Old .doc — try to extract readable text
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let ascii = '';
+        for (let i = 0; i < bytes.length; i++) {
+          if (bytes[i] >= 32 && bytes[i] < 127) ascii += String.fromCharCode(bytes[i]);
+          else if (bytes[i] === 10 || bytes[i] === 13) ascii += '\n';
+          else ascii += ' ';
+        }
+        // Clean up
+        ascii = ascii.replace(/\s{3,}/g, '\n').trim();
+        return {text: ascii || '[Не удалось извлечь текст из .doc]', meta: {format: 'doc', raw: true}};
+      }
+
+      default:
+        return {text: text, meta: {format: ext}};
+    }
+  } catch (e) {
+    return {text: `[Ошибка извлечения: ${e.message}]`, meta: {format: ext, error: e.message}};
+  }
+}
+
+// Dynamic library loading — LOCAL
+function loadJSZip() {
+  return new Promise((res, rej) => {
+    if (window.JSZip) return res(window.JSZip);
+    const s = document.createElement('script');
+    s.src = '/libs/jszip.min.js';
+    s.onload = () => res(window.JSZip);
+    s.onerror = () => rej(new Error('Не удалось загрузить libs/jszip.min.js'));
+    document.head.appendChild(s);
+  });
+}
+
+function loadXLSX() {
+  return new Promise((res, rej) => {
+    if (window.XLSX) return res(window.XLSX);
+    const s = document.createElement('script');
+    s.src = '/libs/xlsx.full.min.js';
+    s.onload = () => res(window.XLSX);
+    s.onerror = () => rej(new Error('Не удалось загрузить libs/xlsx.full.min.js'));
+    document.head.appendChild(s);
+  });
+}
+
+function loadPDFJS() {
+  return new Promise((res, rej) => {
+    if (window.pdfjsLib) return res(window.pdfjsLib);
+    const s = document.createElement('script');
+    s.src = '/libs/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/libs/pdf.worker.min.js';
+      res(window.pdfjsLib);
+    };
+    s.onerror = () => rej(new Error('Не удалось загрузить libs/pdf.min.js'));
+    document.head.appendChild(s);
+  });
+}
+
+// ==================== FILE ATTACH ====================
+function handleFileAttach(e) {
+  state.attachedFiles = [...e.target.files];
+  renderAttachedFiles();
+}
+
+function renderAttachedFiles() {
+  const el = document.getElementById('attachedFiles');
+  el.innerHTML = state.attachedFiles.map((f, i) =>
+    `<span class="attached-file">📎 ${f.name} <span class="rm" onclick="removeFile(${i})">✕</span></span>`
+  ).join('');
+}
+
+function removeFile(i) {
+  state.attachedFiles.splice(i, 1);
+  renderAttachedFiles();
+}
+
+function importDoc() {
+  document.getElementById('fileInput').click();
+}
+
+// ==================== DOCUMENT LIST ====================
+function renderDocList() {
+  const el = document.getElementById('docList');
+  const docs = Object.keys(state.documents);
+  if (docs.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:#484f58;padding:4px">Нет документов</div>';
+    return;
+  }
+  el.innerHTML = docs.map(name => {
+    const d = state.documents[name];
+    return `<div class="memory-item" onclick="showDoc('${name.replace(/'/g,"\\'")}')">
+      <span>📄 ${name}</span>
+      <span class="del" onclick="event.stopPropagation();deleteDoc('${name.replace(/'/g,"\\'")}')">✕</span>
+    </div>`;
+  }).join('');
+}
+
+function showDoc(name) {
+  const d = state.documents[name];
+  if (!d) return;
+  renderMessage('system', `📄 ${name}:\n${d.content.substring(0, 2000)}${d.content.length > 2000 ? '\n...' : ''}`, new Date().toLocaleTimeString('ru'));
+}
+
+async function deleteDoc(name) {
+  delete state.documents[name];
+  await dbDelete('documents', name);
+  renderDocList();
+  updateContextBar();
+}
+
+// ==================== MEMORY (SELF-LEARNING) ====================
+async function addMemory() {
+  const input = document.getElementById('newMemory');
+  const text = input.value.trim();
+  if (!text) return;
+  const mem = {text, time: new Date().toISOString()};
+  await dbPut('memory', mem);
+  state.memory.push(mem);
+  input.value = '';
+  renderMemory();
+  updateContextBar();
+}
+
+function renderMemory() {
+  const el = document.getElementById('memoryList');
+  if (state.memory.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:#484f58;padding:4px">Пусто</div>';
+    return;
+  }
+  el.innerHTML = state.memory.map((m, i) =>
+    `<div class="memory-item">
+      <span title="${m.text}">${m.text.substring(0, 40)}${m.text.length > 40 ? '...' : ''}</span>
+      <span class="del" onclick="removeMemory(${i})">✕</span>
+    </div>`
+  ).join('');
+}
+
+async function removeMemory(i) {
+  const m = state.memory[i];
+  if (m.id) await dbDelete('memory', m.id);
+  state.memory.splice(i, 1);
+  renderMemory();
+  updateContextBar();
+}
+
+async function autoLearn(userMsg, agentReply) {
+  // Simple self-learning: extract potential facts from conversation
+  const patterns = [
+    /(?:меня зовут)\s+(\w{2,30})/i,
+    /(?:мне|мой|я)\s+(?:\d+)\s*(?:лет|года?)/i,
+    /(?:работаю?|место работы)\s+(.+)/i,
+    /(?:запомни|remember)\b\s*:?\s*(.+)/i,
+  ];
+
+  for (const p of patterns) {
+    const m = userMsg.match(p);
+    if (m) {
+      const fact = m[0].trim();
+      const mem = {text: fact, time: new Date().toISOString(), auto: true};
+      await dbPut('memory', mem);
+      state.memory.push(mem);
+      renderMemory();
+      updateContextBar();
+    }
+  }
+}
+
+// ==================== EXPORT ====================
+function showExportData() {
+  document.getElementById('exportModal').classList.add('show');
+}
+
+function doExport() {
+  const format = document.getElementById('exportFormat').value;
+  const what = document.getElementById('exportWhat').value;
+  let data, filename, mime;
+
+  if (what === 'chat' || what === 'all') {
+    const chat = state.currentChat >= 0 ? state.chats[state.currentChat] : {messages: collectMessages()};
+    if (format === 'json') { data = JSON.stringify(chat, null, 2); filename = 'chat.json'; mime = 'application/json'; }
+    else if (format === 'txt') { data = chat.messages.map(m => `[${m.role}] ${m.time}\n${m.content}`).join('\n---\n'); filename = 'chat.txt'; mime = 'text/plain'; }
+    else { data = '# Чат\n\n' + chat.messages.map(m => `**${m.role}** (${m.time}):\n${m.content}`).join('\n\n---\n\n'); filename = 'chat.md'; mime = 'text/markdown'; }
+  } else if (what === 'memory') {
+    data = format === 'json' ? JSON.stringify(state.memory, null, 2) : state.memory.map((m, i) => `${i+1}. ${m.text}`).join('\n');
+    filename = 'memory.' + (format === 'json' ? 'json' : 'txt');
+    mime = format === 'json' ? 'application/json' : 'text/plain';
+  } else if (what === 'docs') {
+    data = format === 'json' ? JSON.stringify(state.documents, null, 2) : Object.entries(state.documents).map(([n, d]) => `=== ${n} ===\n${d.content}`).join('\n\n');
+    filename = 'documents.' + (format === 'json' ? 'json' : 'txt');
+    mime = format === 'json' ? 'application/json' : 'text/plain';
+  }
+
+  downloadFile(filename, data, mime);
+  document.getElementById('exportModal').classList.remove('show');
+}
+
+function downloadFile(name, content, mime) {
+  const blob = new Blob([content], {type: mime + ';charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ==================== UI UTILS ====================
+function toggleSidebar() {
+  state.sidebarOpen = !state.sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('collapsed', !state.sidebarOpen);
+  document.getElementById('toggleSidebar').textContent = state.sidebarOpen ? '◀' : '▶';
+}
+
+function updateContextBar() {
+  const msgs = collectMessages();
+  const tokens = msgs.reduce((s, m) => s + m.content.length / 3, 0);
+  document.getElementById('contextInfo').textContent = `Контекст: ~${Math.round(tokens)} токенов`;
+  document.getElementById('docContext').textContent = `Документы: ${Object.keys(state.documents).length}`;
+  document.getElementById('memContext').textContent = `Память: ${state.memory.length} фактов`;
+}
+
+// ==================== SKILLS PANEL ====================
+function showSkillsPanel() {
+  document.getElementById('skillsModal').classList.add('show');
+  fetch('/api/skills')
+    .then(r => r.json())
+    .then(data => {
+      const el = document.getElementById('skillsList');
+      if (!data.skills || data.skills.length === 0) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#484f58">Нет скиллов</div>';
+        return;
+      }
+      el.innerHTML = data.skills.map(s => {
+        const hasScripts = s.has_scripts ? '⚡' : '';
+        const toggleIcon = s.enabled ? '✅' : '⛔';
+        const toggleTitle = s.enabled ? 'Отключить' : 'Включить';
+        const opacity = s.enabled ? '1' : '0.5';
+        return `<div style="display:flex;align-items:center;padding:6px 12px;font-size:12px;opacity:${opacity}" onclick="showSkillDetail('${s.id}')">
+          <span style="width:20px;cursor:pointer" onclick="event.stopPropagation();toggleSkill('${s.id}', ${s.enabled ? 'false' : 'true'})" title="${toggleTitle}">${toggleIcon}</span>
+          <span style="width:20px">${hasScripts}</span>
+          <span style="flex:1">${s.name}</span>
+          <span style="font-size:10px;color:#484f58;max-width:120px;overflow:hidden;text-overflow:ellipsis">${s.description.substring(0,40)}</span>
+        </div>`;
+      }).join('');
+    });
+}
+
+function toggleSkill(skillId, enable) {
+  fetch(`/api/skill_toggle?id=${encodeURIComponent(skillId)}&enabled=${enable ? 1 : 0}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) showSkillsPanel(); // refresh
+    });
+}
+
+function showSkillDetail(skillId) {
+  fetch(`/api/skill_detail?id=${encodeURIComponent(skillId)}`)
+    .then(r => r.json())
+    .then(data => {
+      const el = document.getElementById('skillDetail');
+      el.style.display = 'block';
+      if (data.skill) {
+        const s = data.skill;
+        let html = `<strong>${s.name}</strong>\n${s.description}\n\n`;
+        if (s.scripts && s.scripts.length > 0) {
+          html += `Скрипты: ${s.scripts.join(', ')}\n\n`;
+        }
+        html += s.content || '';
+        el.textContent = html;
+      } else {
+        el.textContent = 'Скилл не найден';
+      }
+    });
+}
+
+// ==================== FILE MANAGER ====================
+let fmCurrentPath = '.';
+let fmCurrentFile = null;
+
+function showFileManager() {
+  document.getElementById('fileManagerModal').classList.add('show');
+  fmCurrentPath = state.settings.lastFmPath || '.';
+  document.getElementById('fmPath').value = fmCurrentPath;
+  fmRefresh();
+}
+
+function fmRefresh() {
+  const path = fmCurrentPath;
+  document.getElementById('fmPath').value = path;
+  state.settings.lastFmPath = path;
+  try { localStorage.setItem('agent_settings', JSON.stringify(state.settings)); } catch(e) {}
+
+  const el = document.getElementById('fmList');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:#8b949e">Загрузка...</div>';
+  document.getElementById('fmStatus').textContent = '';
+
+  fetch(`/api/file/list?path=${encodeURIComponent(path)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        el.innerHTML = `<div style="padding:10px;color:var(--red)">${data.error}</div>`;
+        return;
+      }
+      fmCurrentPath = data.path;
+      document.getElementById('fmPath').value = data.path;
+      document.getElementById('fmStatus').textContent = `${data.entries.length} элементов`;
+
+      if (data.entries.length === 0) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#484f58">Пусто</div>';
+        return;
+      }
+
+      const dirs = data.entries.filter(e => e.is_dir);
+      const files = data.entries.filter(e => !e.is_dir);
+
+      let html = '';
+      // Parent dir link
+      html += `<div class="sidebar-btn" style="padding:6px 10px;font-size:12px;color:#8b949e" onclick="fmUp()"><span class="icon">⬆️</span><span>..</span></div>`;
+
+      dirs.forEach(e => {
+        html += `<div class="sidebar-btn" style="padding:6px 10px;font-size:12px" ondblclick="fmOpenDir('${e.name.replace(/'/g,"\\'")}')">
+          <span style="width:20px">📁</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>
+          <span style="font-size:10px;color:#484f58;cursor:pointer;padding:2px 6px" onclick="event.stopPropagation();fmDelete('${e.name.replace(/'/g,"\\'")}',true)">🗑️</span>
+          <span style="font-size:10px;color:#484f58;cursor:pointer;padding:2px 6px" onclick="event.stopPropagation();fmRename('${e.name.replace(/'/g,"\\'")}')" title="Переименовать">✏️</span>
+        </div>`;
+      });
+
+      files.forEach(e => {
+        const size = e.size < 1024 ? e.size + ' B' : e.size < 1048576 ? (e.size/1024).toFixed(1) + ' KB' : (e.size/1048576).toFixed(1) + ' MB';
+        html += `<div class="sidebar-btn" style="padding:6px 10px;font-size:12px;cursor:pointer" ondblclick="fmOpenFile('${e.name.replace(/'/g,"\\'")}')">
+          <span style="width:20px">📄</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>
+          <span style="font-size:10px;color:#484f58">${size}</span>
+          <span style="font-size:10px;color:#484f58;cursor:pointer;padding:2px 6px" onclick="event.stopPropagation();fmDelete('${e.name.replace(/'/g,"\\'")}',false)">🗑️</span>
+          <span style="font-size:10px;color:#484f58;cursor:pointer;padding:2px 6px" onclick="event.stopPropagation();fmRename('${e.name.replace(/'/g,"\\'")}')" title="Переименовать">✏️</span>
+        </div>`;
+      });
+
+      el.innerHTML = html;
+    })
+    .catch(e => {
+      el.innerHTML = `<div style="padding:10px;color:var(--red)">Ошибка: ${e.message}</div>`;
+    });
+}
+
+function fmGo() {
+  const p = document.getElementById('fmPath').value.trim();
+  // Handle relative paths
+  let fullPath;
+  if (p.startsWith('/') || p.match(/^[A-Za-z]:/)) {
+    fullPath = p;
+  } else {
+    fullPath = fmCurrentPath === '.' ? p : fmCurrentPath + '/' + p;
+  }
+  fmCurrentPath = fullPath;
+  fmRefresh();
+}
+
+function fmGoPath(path) {
+  fmCurrentPath = path;
+  fmRefresh();
+  showFileManager();
+}
+
+function fmUp() {
+  if (fmCurrentPath === '/' || fmCurrentPath === '.') return;
+  const parts = fmCurrentPath.replace(/\\/g, '/').split('/');
+  parts.pop();
+  fmCurrentPath = parts.length === 0 ? '/' : parts.join('/');
+  if (fmCurrentPath === '') fmCurrentPath = '/';
+  fmRefresh();
+}
+
+function fmOpenDir(name) {
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  fmCurrentPath = fmCurrentPath === '.' ? name : fmCurrentPath + sep + name;
+  fmRefresh();
+}
+
+function fmOpenFile(name) {
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  const fullPath = fmCurrentPath === '.' ? name : fmCurrentPath + sep + name;
+
+  fetch(`/api/file/read?path=${encodeURIComponent(fullPath)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert('Ошибка: ' + data.error);
+        return;
+      }
+      fmCurrentFile = fullPath;
+      document.getElementById('fmEditor').style.display = 'block';
+      document.getElementById('fmEditorTitle').textContent = fullPath;
+      document.getElementById('fmEditorArea').value = data.content;
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmSaveFile() {
+  if (!fmCurrentFile) return;
+  const content = document.getElementById('fmEditorArea').value;
+  fetch('/api/file/write', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: fmCurrentFile, content})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        document.getElementById('fmEditorTitle').textContent = fmCurrentFile + ' ✓';
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmRunFile() {
+  if (!fmCurrentFile) return;
+  const content = document.getElementById('fmEditorArea').value;
+  // Save first, then run
+  fetch('/api/file/write', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: fmCurrentFile, content})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) throw new Error(data.error);
+      return fetch('/api/script/run?path=' + encodeURIComponent(fmCurrentPath));
+    })
+    .then(r => r.json())
+    .then(data => {
+      alert(data.result || 'Нет вывода');
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmCloseEditor() {
+  document.getElementById('fmEditor').style.display = 'none';
+  fmCurrentFile = null;
+}
+
+function fmNewFile() {
+  const name = prompt('Имя файла:');
+  if (!name) return;
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  const fullPath = fmCurrentPath === '.' ? name : fmCurrentPath + sep + name;
+  fetch('/api/file/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: fullPath, is_dir: false})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        fmRefresh();
+        fmOpenFile(name);
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmNewDir() {
+  const name = prompt('Имя папки:');
+  if (!name) return;
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  const fullPath = fmCurrentPath === '.' ? name : fmCurrentPath + sep + name;
+  fetch('/api/file/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: fullPath, is_dir: true})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) fmRefresh();
+      else alert('Ошибка: ' + data.error);
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmDelete(name, isDir) {
+  if (!confirm(`Удалить ${isDir ? 'папку' : 'файл'} "${name}"?`)) return;
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  const fullPath = fmCurrentPath === '.' ? name : fmCurrentPath + sep + name;
+  fetch('/api/file/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: fullPath})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) fmRefresh();
+      else alert('Ошибка: ' + data.error);
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function fmRename(oldName) {
+  const newName = prompt('Новое имя:', oldName);
+  if (!newName || newName === oldName) return;
+  const sep = fmCurrentPath.endsWith('/') ? '' : '/';
+  const src = fmCurrentPath === '.' ? oldName : fmCurrentPath + sep + oldName;
+  const dst = fmCurrentPath === '.' ? newName : fmCurrentPath + sep + newName;
+  fetch('/api/file/rename', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({src, dst})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) fmRefresh();
+      else alert('Ошибка: ' + data.error);
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+// ==================== SCRIPT EDITOR ====================
+function showScriptEditor() {
+  document.getElementById('scriptEditorModal').classList.add('show');
+  document.getElementById('scriptOutput').style.display = 'none';
+  document.getElementById('scriptOutput').textContent = '';
+}
+
+function scriptNew() {
+  document.getElementById('scriptPath').value = 'tools/script_' + Date.now() + '.py';
+  document.getElementById('scriptEditorArea').value = '# New Python script\nimport os\nimport sys\n\nprint("Hello from OWL Agent!")\nprint(f"Python: {sys.version}")\nprint(f"CWD: {os.getcwd()}")\n';
+  document.getElementById('scriptOutput').style.display = 'none';
+}
+
+function scriptLoad() {
+  const path = document.getElementById('scriptPath').value.trim();
+  if (!path) { alert('Укажите путь скрипта'); return; }
+  fetch(`/api/file/read?path=${encodeURIComponent(path)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert('Ошибка: ' + data.error); return; }
+      document.getElementById('scriptEditorArea').value = data.content;
+      document.getElementById('scriptOutput').style.display = 'none';
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function scriptSave() {
+  const path = document.getElementById('scriptPath').value.trim();
+  const content = document.getElementById('scriptEditorArea').value;
+  if (!path) { alert('Укажите путь скрипта'); return; }
+  fetch('/api/script/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path, content})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        document.getElementById('scriptOutput').style.display = 'block';
+        document.getElementById('scriptOutput').textContent = `✓ Сохранено: ${path} (${data.size} bytes)`;
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function scriptRun() {
+  const path = document.getElementById('scriptPath').value.trim();
+  const content = document.getElementById('scriptEditorArea').value;
+  const timeout = parseInt(document.getElementById('scriptTimeout').value);
+  const outEl = document.getElementById('scriptOutput');
+  outEl.style.display = 'block';
+  outEl.textContent = '⏳ Выполняется...\n';
+
+  // Save first, then execute
+  fetch('/api/script/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: path || 'tools/_temp_script.py', content})
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) throw new Error(data.error);
+      const runPath = path || 'tools/_temp_script.py';
+      return fetch('/api/script/exec', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: runPath, timeout})
+      });
+    })
+    .then(r => r.json())
+    .then(data => {
+      const exitLabel = data.exit_code === 0 ? '✓' : data.exit_code === -1 ? '⏱' : '✗';
+      outEl.textContent = `${exitLabel} Exit code: ${data.exit_code}\n\n${data.result}`;
+    })
+    .catch(e => {
+      outEl.textContent = `✗ Ошибка: ${e.message}`;
+    });
+}
+
+// ==================== FLOW EDITOR ====================
+// Flow Editor — visual node-based flow builder
+
+let flowEditorOpen = false;
+let currentFlowId = null;
+let flowNodes = [];
+let flowConnections = [];
+let nodeIdCounter = 0;
+let isDragging = false;
+let dragNode = null;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let canvasScale = 1;
+let canvasOffsetX = 0;
+let canvasOffsetY = 0;
+
+const FLOW_ACTION_TYPES = [
+  { value: 'file_create', label: 'Create File', color: '#3fb950', icon: '📄' },
+  { value: 'file_write', label: 'Write File', color: '#3fb950', icon: '✏️' },
+  { value: 'file_read', label: 'Read File', color: '#58a6ff', icon: '📖' },
+  { value: 'file_delete', label: 'Delete File', color: '#f85149', icon: '🗑' },
+  { value: 'file_mkdir', label: 'Create Dir', color: '#3fb950', icon: '📁' },
+  { value: 'script_exec', label: 'Run Script', color: '#d29922', icon: '⚡' },
+  { value: 'command', label: 'Run Command', color: '#d29922', icon: '💻' },
+  { value: 'api_call', label: 'API Call', color: '#bc8cff', icon: '🌐' },
+  { value: 'set_variable', label: 'Set Variable', color: '#8b949e', icon: '🔧' },
+  { value: 'wait', label: 'Wait', color: '#8b949e', icon: '⏱' },
+  { value: 'notify', label: 'Notify', color: '#58a6ff', icon: '🔔' },
+  { value: 'if', label: 'If / Else', color: '#f85149', icon: '🔀' },
+  { value: 'loop', label: 'Loop', color: '#bc8cff', icon: '🔁' },
+  { value: 'parallel', label: 'Parallel', color: '#d29922', icon: '⚏' },
+];
+
+function openFlowEditor(flowId) {
+  currentFlowId = flowId || null;
+  flowEditorOpen = true;
+  document.getElementById('flowEditorOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  
+  // Populate node palette
+  const palette = document.getElementById('nodePalette');
+  palette.innerHTML = FLOW_ACTION_TYPES.map(a => 
+    `<button class="sidebar-btn" style="margin-bottom:4px;border-left:3px solid ${a.color}" onclick="addNodeToFlow('${a.value}')"><span>${a.icon}</span><span>${a.label}</span></button>`
+  ).join('');
+  
+  if (flowId) {
+    document.getElementById('flowEditorTitle').textContent = flowId;
+    loadFlowForEditing(flowId);
+  } else {
+    document.getElementById('flowEditorTitle').textContent = 'Новый флоу';
+    // New empty flow
+    flowNodes = [];
+    flowConnections = [];
+    nodeIdCounter = 0;
+    // Add a start node
+    addFlowNode('start', '🚀', 'Start', '#3fb950', 100, 200);
+    renderFlowEditor();
+  }
+}
+
+function closeFlowEditor() {
+  flowEditorOpen = false;
+  document.getElementById('flowEditorOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function addFlowNode(action, icon, label, color, x, y) {
+  const id = 'node_' + (nodeIdCounter++);
+  flowNodes.push({ id, action, icon, label, color, x, y, config: {} });
+  return id;
+}
+
+function removeFlowNode(nodeId) {
+  flowNodes = flowNodes.filter(n => n.id !== nodeId);
+  flowConnections = flowConnections.filter(c => c.from !== nodeId && c.to !== nodeId);
+  renderFlowEditor();
+}
+
+function connectNodes(fromId, toId) {
+  // Prevent duplicate connections
+  if (flowConnections.some(c => c.from === fromId && c.to === toId)) return;
+  flowConnections.push({ from: fromId, to: toId });
+}
+
+function renderFlowEditor() {
+  const canvas = document.getElementById('flowCanvas');
+  if (!canvas) return;
+  
+  // Render nodes
+  let html = '';
+  
+  // Render connections as SVG lines
+  html += '<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0">';
+  for (const conn of flowConnections) {
+    const from = flowNodes.find(n => n.id === conn.from);
+    const to = flowNodes.find(n => n.id === conn.to);
+    if (!from || !to) continue;
+    const x1 = from.x + 75, y1 = from.y + 25;
+    const x2 = to.x + 75, y2 = to.y + 25;
+    const mx = (x1 + x2) / 2;
+    html += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke="#30363d" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>`;
+  }
+  html += '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#30363d"/></marker></defs>';
+  html += '</svg>';
+  
+  // Render nodes
+  for (const node of flowNodes) {
+    html += `<div class="flow-node" id="${node.id}" style="left:${node.x}px;top:${node.y}px;border-color:${node.color};background:${node.color}15" 
+                  onmousedown="startDragNode(event,'${node.id}')" ondblclick="editNodeConfig('${node.id}')">
+      <div class="flow-node-header" style="background:${node.color}25">
+        <span class="flow-node-icon">${node.icon}</span>
+        <span class="flow-node-title">${node.label}</span>
+        <span class="flow-node-del" onclick="removeFlowNode('${node.id}')" title="Delete">✕</span>
+      </div>
+      <div class="flow-node-body">
+        ${node.action === 'start' ? '<span style="font-size:10px;color:#8b949e">Начало</span>' : getNodeConfigSummary(node)}
+      </div>
+      <div class="flow-node-port flow-port-out" onmousedown="startConnect(event,'${node.id}')" title="Drag to connect">→</div>
+      <div class="flow-node-port flow-port-in" title="Connect here">←</div>
+    </div>`;
+  }
+  
+  canvas.innerHTML = html;
+  updateFlowJSON();
+}
+
+function getNodeConfigSummary(node) {
+  const c = node.config;
+  switch (node.action) {
+    case 'file_create': case 'file_write': return `<span style="font-size:10px;color:#8b949e">${c.path || '(путь)'}</span>`;
+    case 'script_exec': case 'command': return `<span style="font-size:10px;color:#8b949e">${(c.code || c.command || '').substring(0, 20)}...</span>`;
+    case 'api_call': return `<span style="font-size:10px;color:#8b949e">${c.url || '(URL)'}</span>`;
+    case 'set_variable': return `<span style="font-size:10px;color:#8b949e">${c.name || '?'} = ${c.value || '?'}</span>`;
+    case 'wait': return `<span style="font-size:10px;color:#8b949e">${c.seconds || 1}s</span>`;
+    case 'if': return `<span style="font-size:10px;color:#8b949e">${c.condition_type || 'condition'}</span>`;
+    case 'loop': return `<span style="font-size:10px;color:#8b949e">count: ${c.count || '?'}</span>`;
+    case 'parallel': return `<span style="font-size:10px;color:#8b949e">${(c.steps || []).length} steps</span>`;
+    default: return `<span style="font-size:10px;color:#8b949e">${node.action}</span>`;
+  }
+}
+
+function startDragNode(e, nodeId) {
+  if (e.target.classList.contains('flow-node-del') || e.target.classList.contains('flow-node-port')) return;
+  isDragging = true;
+  dragNode = flowNodes.find(n => n.id === nodeId);
+  const rect = document.getElementById('flowCanvas').getBoundingClientRect();
+  dragOffsetX = e.clientX - rect.left - dragNode.x;
+  dragOffsetY = e.clientY - rect.top - dragNode.y;
+  e.preventDefault();
+}
+
+let connectingFrom = null;
+function startConnect(e, nodeId) {
+  connectingFrom = nodeId;
+  e.stopPropagation();
+  e.preventDefault();
+}
+
+document.addEventListener('mousemove', function(e) {
+  if (isDragging && dragNode) {
+    const canvas = document.getElementById('flowCanvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    dragNode.x = Math.max(0, e.clientX - rect.left - dragOffsetX);
+    dragNode.y = Math.max(0, e.clientY - rect.top - dragOffsetY);
+    renderFlowEditor();
+  }
+});
+
+document.addEventListener('mouseup', function(e) {
+  if (connectingFrom) {
+    // Find node under cursor
+    const canvas = document.getElementById('flowCanvas');
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      for (const node of flowNodes) {
+        if (node.id === connectingFrom) continue;
+        if (mx >= node.x && mx <= node.x + 150 && my >= node.y && my <= node.y + 80) {
+          connectNodes(connectingFrom, node.id);
+          renderFlowEditor();
+          break;
+        }
+      }
+    }
+    connectingFrom = null;
+  }
+  isDragging = false;
+  dragNode = null;
+});
+
+function editNodeConfig(nodeId) {
+  const node = flowNodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (node.action === 'start') return;
+  
+  const actionInfo = FLOW_ACTION_TYPES.find(a => a.value === node.action);
+  let html = `<h3 style="margin-bottom:12px">${actionInfo ? actionInfo.icon + ' ' + actionInfo.label : node.action}</h3>`;
+  
+  // Common fields based on action type
+  if (['file_create','file_write','file_read','file_delete','file_mkdir','file_exists'].includes(node.action)) {
+    html += `<label>Путь к файлу</label><input type="text" id="cfg_path" value="${node.config.path || ''}" placeholder="/path/to/file">`;
+  }
+  if (['file_create','file_write'].includes(node.action)) {
+    html += `<label>Содержимое</label><textarea id="cfg_content" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:8px;font-size:12px;resize:vertical">${node.config.content || ''}</textarea>`;
+  }
+  if (node.action === 'file_write') {
+    html += `<label><input type="checkbox" id="cfg_append" ${node.config.mode === 'append' ? 'checked' : ''}> Дописать (append)</label>`;
+  }
+  if (['script_exec','command'].includes(node.action)) {
+    html += `<label>Код команды</label><textarea id="cfg_code" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical">${node.config.code || node.config.command || ''}</textarea>`;
+    html += `<label>Таймаут (сек)</label><input type="number" id="cfg_timeout" value="${node.config.timeout || 30}" min="1" max="120">`;
+  }
+  if (node.action === 'api_call') {
+    html += `<label>URL</label><input type="text" id="cfg_url" value="${node.config.url || ''}" placeholder="https://api.example.com">`;
+    html += `<label>Метод</label><select id="cfg_method"><option ${node.config.method==='GET'?'selected':''}>GET</option><option ${node.config.method==='POST'?'selected':''}>POST</option><option ${node.config.method==='PUT'?'selected':''}>PUT</option><option ${node.config.method==='DELETE'?'selected':''}>DELETE</option></select>`;
+  }
+  if (node.action === 'set_variable') {
+    html += `<label>Имя переменной</label><input type="text" id="cfg_name" value="${node.config.name || ''}" placeholder="my_var">`;
+    html += `<label>Значение</label><input type="text" id="cfg_value" value="${node.config.value || ''}" placeholder="value">`;
+  }
+  if (node.action === 'wait') {
+    html += `<label>Секунд</label><input type="number" id="cfg_seconds" value="${node.config.seconds || 1}" min="0" max="3600">`;
+  }
+  if (node.action === 'notify') {
+    html += `<label>Сообщение</label><input type="text" id="cfg_message" value="${node.config.message || ''}" placeholder="Done!">`;
+  }
+  if (node.action === 'if') {
+    html += `<label>Тип условия</label><select id="cfg_condition_type">
+      <option value="file_exists" ${node.config.condition_type==='file_exists'?'selected':''}>Файл существует</option>
+      <option value="file_not_exists" ${node.config.condition_type==='file_not_exists'?'selected':''}>Файл не существует</option>
+      <option value="var_equals" ${node.config.condition_type==='var_equals'?'selected':''}>Переменная =</option>
+      <option value="var_not_equals" ${node.config.condition_type==='var_not_equals'?'selected':''}>Переменная ≠</option>
+      <option value="var_contains" ${node.config.condition_type==='var_contains'?'selected':''}>Переменная содержит</option>
+      <option value="command_success" ${node.config.condition_type==='command_success'?'selected':''}>Команда успешна</option>
+    </select>`;
+    html += `<label>Параметр (путь/имя переменной/команда)</label><input type="text" id="cfg_condition_param" value="${node.config.condition_param || ''}">`;
+    html += `<label>Значение (для var_equals/var_not_equals/var_contains)</label><input type="text" id="cfg_condition_value" value="${node.config.condition_value || ''}">`;
+  }
+  if (node.action === 'loop') {
+    html += `<label>Кол-во итераций</label><input type="number" id="cfg_count" value="${node.config.count || 3}" min="1" max="1000">`;
+    html += `<label>Имя переменной цикла</label><input type="text" id="cfg_variable" value="${node.config.variable || 'i'}" placeholder="i">`;
+    html += `<label style="color:#8b949e;font-size:11px">Внутренние шаги задаются через соединения после этого блока</label>`;
+  }
+  if (node.action === 'parallel') {
+    html += `<label>Макс. потоков</label><input type="number" id="cfg_max_workers" value="${node.config.max_workers || 4}" min="1" max="8">`;
+    html += `<label style="color:#8b949e;font-size:11px">Внутренние шаги задаются через соединения после этого блока</label>`;
+  }
+  
+  html += `<div class="modal-btns"><button class="btn-primary" onclick="saveNodeConfig('${nodeId}')">Сохранить</button><button class="btn-secondary" onclick="closeModal()">Отмена</button></div>`;
+  
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('settingsModal').classList.add('show');
+}
+
+function saveNodeConfig(nodeId) {
+  const node = flowNodes.find(n => n.id === nodeId);
+  if (!node) return;
+  
+  const get = id => document.getElementById(id) ? document.getElementById(id).value : '';
+  const checked = id => document.getElementById(id) ? document.getElementById(id).checked : false;
+  
+  // Save common fields
+  if (document.getElementById('cfg_path')) node.config.path = get('cfg_path');
+  if (document.getElementById('cfg_content')) node.config.content = get('cfg_content');
+  if (document.getElementById('cfg_append')) node.config.mode = checked('cfg_append') ? 'append' : 'overwrite';
+  if (document.getElementById('cfg_code')) node.config.code = get('cfg_code');
+  if (document.getElementById('cfg_timeout')) node.config.timeout = parseInt(get('cfg_timeout')) || 30;
+  if (document.getElementById('cfg_url')) node.config.url = get('cfg_url');
+  if (document.getElementById('cfg_method')) node.config.method = get('cfg_method');
+  if (document.getElementById('cfg_name')) node.config.name = get('cfg_name');
+  if (document.getElementById('cfg_value')) node.config.value = get('cfg_value');
+  if (document.getElementById('cfg_seconds')) node.config.seconds = parseInt(get('cfg_seconds')) || 1;
+  if (document.getElementById('cfg_message')) node.config.message = get('cfg_message');
+  if (document.getElementById('cfg_condition_type')) node.config.condition_type = get('cfg_condition_type');
+  if (document.getElementById('cfg_condition_param')) node.config.condition_param = get('cfg_condition_param');
+  if (document.getElementById('cfg_condition_value')) node.config.condition_value = get('cfg_condition_value');
+  if (document.getElementById('cfg_count')) node.config.count = parseInt(get('cfg_count')) || 3;
+  if (document.getElementById('cfg_variable')) node.config.variable = get('cfg_variable');
+  if (document.getElementById('cfg_max_workers')) node.config.max_workers = parseInt(get('cfg_max_workers')) || 4;
+  
+  closeModal();
+  renderFlowEditor();
+}
+
+function updateFlowJSON() {
+  const steps = flowNodes
+    .filter(n => n.action !== 'start')
+    .sort((a, b) => {
+      // Sort by connections (topological)
+      const aConn = flowConnections.filter(c => c.to === a.id).length;
+      const bConn = flowConnections.filter(c => c.to === b.id).length;
+      return aConn - bConn;
+    })
+    .map(n => {
+      const step = { action: n.action };
+      Object.assign(step, n.config);
+      return step;
+    });
+  
+  document.getElementById('flowJSON').value = JSON.stringify(steps, null, 2);
+}
+
+function saveFlow() {
+  const flowName = prompt('Имя флоу:', currentFlowId || 'my_flow');
+  if (!flowName) return;
+  
+  const steps = JSON.parse(document.getElementById('flowJSON').value || '[]');
+  
+  fetch('/api/flow/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id: flowName, name: flowName, steps: steps, description: 'Created in Flow Editor' })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.id) {
+        currentFlowId = data.id;
+        alert('Флоу сохранён: ' + data.id);
+        loadFlowList();
+      } else {
+        alert('Ошибка: ' + (data.error || 'unknown'));
+      }
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function runFlowFromEditor() {
+  if (!currentFlowId) { alert('Сначала сохраните флоу'); return; }
+  
+  fetch('/api/flow/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id: currentFlowId })
+  })
+    .then(r => r.json())
+    .then(data => {
+      const output = document.getElementById('flowOutput');
+      output.style.display = 'block';
+      output.textContent = JSON.stringify(data, null, 2);
+    })
+    .catch(e => alert('Ошибка: ' + e.message));
+}
+
+function loadFlowForEditing(flowId) {
+  fetch('/api/flow/get?id=' + flowId)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.steps) { alert('Флоу не найден'); return; }
+      
+      flowNodes = [];
+      flowConnections = [];
+      nodeIdCounter = 0;
+      
+      // Create start node
+      const startId = addFlowNode('start', '🚀', 'Start', '#3fb950', 50, 150);
+      
+      let prevId = startId;
+      let yOffset = 0;
+      
+      for (let i = 0; i < data.steps.length; i++) {
+        const step = data.steps[i];
+        const actionInfo = FLOW_ACTION_TYPES.find(a => a.value === step.action) || { label: step.action, color: '#8b949e', icon: '❓' };
+        const nodeId = addFlowNode(step.action, actionInfo.icon, actionInfo.label, actionInfo.color, 250 + (i % 3) * 200, 100 + yOffset);
+        
+        // Copy config
+        const node = flowNodes.find(n => n.id === nodeId);
+        const { action, ...rest } = step;
+        node.config = rest;
+        
+        connectNodes(prevId, nodeId);
+        prevId = nodeId;
+        yOffset += 100;
+      }
+      
+      renderFlowEditor();
+    })
+    .catch(e => alert('Ошибка загрузки: ' + e.message));
+}
+
+function loadFlowList() {
+  fetch('/api/flow/list')
+    .then(r => r.json())
+    .then(data => {
+      const el = document.getElementById('flowList');
+      if (!data.flows || data.flows.length === 0) {
+        el.innerHTML = '<div style="color:#484f58;font-size:11px">Нет флоу</div>';
+        return;
+      }
+      el.innerHTML = data.flows.map(f => 
+        `<div class="memory-item" style="cursor:pointer" onclick="openFlowEditor('${f.id}')">
+          <span>🔀 ${f.name || f.id}</span>
+          <span style="color:#484f58;font-size:10px">${f.created_at ? f.created_at.substring(0,10) : ''}</span>
+        </div>`
+      ).join('');
+    })
+    .catch(() => {});
+}
+
+function addNodeToFlow(actionType) {
+  const actionInfo = FLOW_ACTION_TYPES.find(a => a.value === actionType);
+  if (!actionInfo) return;
+  const id = addFlowNode(actionType, actionInfo.icon, actionInfo.label, actionInfo.color, 200 + Math.random() * 200, 100 + Math.random() * 200);
+  renderFlowEditor();
+}
+
+// Load flow list on init
+setTimeout(loadFlowList, 1000);
+
+// ==================== ANDROID BRIDGE ====================
+function getAndroidServerUrl() {
+  try {
+    if (window.Android && typeof window.Android.getServerUrl === 'function') {
+      return window.Android.getServerUrl();
+    }
+  } catch (e) {}
+  return null;
+}
+
+// ==================== AGENT TEAMS v3.0 ====================
+var teamAgents = [];
+
+function showCreateTeamModal() {
+  teamAgents = [{name:'', role:'', skills:[]}];
+  renderTeamAgents();
+  document.getElementById('createTeamModal').classList.add('show');
+  loadTeamTemplates();
+}
+
+function loadTeamTemplates() {
+  var sel = document.getElementById('teamTemplate');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Свой шаблон —</option>';
+  fetch('/api/teams/templates')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      data.templates.forEach(function(t,i){
+        var opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = t.name + ' — ' + t.description;
+        sel.appendChild(opt);
+      });
+    });
+}
+
+function applyTeamTemplate() {
+  var idx = document.getElementById('teamTemplate').value;
+  if (!idx) return;
+  fetch('/api/teams/templates')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var t = data.templates[parseInt(idx)];
+      document.getElementById('teamName').value = t.name;
+      document.getElementById('teamTask').value = t.description;
+      teamAgents = t.agents.map(function(a){return {name:a.name, role:a.role, skills:a.skills||[]};});
+      renderTeamAgents();
+    });
+}
+
+function renderTeamAgents() {
+  var el = document.getElementById('teamAgentsList');
+  if (!el) return;
+  if (!teamAgents.length) {
+    el.innerHTML = '<div style="font-size:11px;color:#484f58">Добавьте агентов</div>';
+    return;
+  }
+  var h = '';
+  teamAgents.forEach(function(a,i){
+    h += '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">';
+    h += '<input type="text" placeholder="Имя" value="'+a.name+'" onchange="teamAgents['+i+'].name=this.value" style="width:80px;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px">';
+    h += '<input type="text" placeholder="Роль" value="'+a.role+'" onchange="teamAgents['+i+'].role=this.value" style="flex:1;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px">';
+    h += '<input type="text" placeholder="Скиллы" value="'+(a.skills||[]).join(',')+'" onchange="teamAgents['+i+'].skills=this.value.split(',').map(function(s){return s.trim()})" style="width:100px;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px">';
+    h += '<span style="color:var(--red);cursor:pointer" onclick="teamAgents.splice('+i+',1);renderTeamAgents()">✕</span>';
+    h += '</div>';
+  });
+  el.innerHTML = h;
+}
+
+function addTeamAgent() {
+  teamAgents.push({name:'', role:'', skills:[]});
+  renderTeamAgents();
+}
+
+function createTeam() {
+  var name = document.getElementById('teamName').value.trim();
+  var task = document.getElementById('teamTask').value.trim();
+  var agents = teamAgents.filter(function(a){return a.name && a.role;});
+  if (!name || !task || !agents.length) { alert('Заполните поля'); return; }
+  var el = document.getElementById('createTeamResult');
+  if (el) { el.style.display='block'; el.textContent='Создание...'; }
+  fetch('/api/teams/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name, task:task, agents:agents})})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if (!data.ok) { if(el) el.textContent='Ошибка: '+(data.error||'?'); return; }
+      if (el) el.textContent='Создана! Запуск...';
+      return fetch('/api/teams/'+data.team.team_id+'/run', {method:'POST'})
+        .then(function(r){return r.json()})
+        .then(function(runData){
+          if (el) el.textContent='Готово!\n'+JSON.stringify(runData.results||{},null,2).substring(0,1500);
+          loadSidebarTeams();
+        });
+    })
+    .catch(function(e){ if(el) el.textContent='Ошибка: '+e; });
+}
+
+function openTeamDetail(teamId) {
+  document.getElementById('teamDetailModal').classList.add('show');
+  document.getElementById('teamDetailTitle').textContent = teamId;
+  document.getElementById('teamDetailContent').innerHTML = '<div style="color:#8b949e">Загрузка...</div>';
+  fetch('/api/teams/'+teamId)
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if (!data.team) return;
+      var t = data.team, h = '<div style="font-size:12px">';
+      h += '<p><strong>Задача:</strong> '+t.task+'</p>';
+      h += '<p><strong>Статус:</strong> '+t.status+'</p>';
+      h += '<p><strong>Агенты:</strong></p><ul>';
+      (t.agent_roles||[]).forEach(function(a){ h+='<li>'+a.name+' — '+a.role+'</li>'; });
+      h += '</ul>';
+      if (t.results && t.results.steps) {
+        h += '<h4>Результаты:</h4>';
+        t.results.steps.forEach(function(s){
+          h += '<div style="margin:8px 0;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px">';
+          h += '<strong>'+s.agent+'</strong> ('+(s.role||'')+')<br>';
+          if (s.result) h += '<pre style="margin:4px 0;white-space:pre-wrap;font-size:11px">'+String(s.result).substring(0,400)+'</pre>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
+      document.getElementById('teamDetailContent').innerHTML = h;
+    });
+}
+
+function deleteTeam(teamId) {
+  if (!confirm('Удалить?')) return;
+  fetch('/api/teams/'+teamId, {method:'DELETE'}).then(function(){loadSidebarTeams()});
+}
+
+function loadSidebarTeams() {
+  var el = document.getElementById('sidebarTeams');
+  if (!el) return;
+  fetch('/api/teams')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if (!data.teams || !data.teams.length) { el.innerHTML='<div style="color:#484f58">Нет команд</div>'; return; }
+      var colors = {completed:'#3fb950', running:'#d29922', error:'#f85149', created:'#8b949e'};
+      el.innerHTML = data.teams.slice(0,8).map(function(t){
+        var c = colors[t.status]||'#8b949e';
+        return '<div style="padding:3px 0;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="openTeamDetail(\''+t.team_id+'\')">' +
+          '<span style="color:'+c+'">●</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.name+'</span>' +
+          '</div>';
+      }).join('');
+    });
+}
+
+setTimeout(loadSidebarTeams, 2000);
+
+// ==================== START ====================
+// Inject Android server URL before init
+(function() {
+  var androidUrl = getAndroidServerUrl();
+  if (androidUrl && androidUrl !== 'http://192.168.0.25:7860') {
+    var saved = localStorage.getItem('agent_settings');
+    if (!saved) {
+      state.settings.url = androidUrl + '/v1';
+    }
+  }
+})();
+init();
+</script>
+<!-- Create Team Modal -->
+<div class="modal-overlay" id="createTeamModal">
+  <div class="modal" style="max-width:560px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">👥 Создать команду агентов</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('createTeamModal').classList.remove('show')">✕</button>
+    </div>
+    <label>Название команды</label>
+    <input type="text" id="teamName" placeholder="Web Research Team" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <label>Задача</label>
+    <textarea id="teamTask" rows="3" placeholder="Исследовать конкурентов и создать отчёт" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px;resize:vertical;font-family:inherit"></textarea>
+    <label>Шаблон</label>
+    <select id="teamTemplate" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+      <option value="">— Свой шаблон —</option>
+    </select>
+    <label>Агенты</label>
+    <div id="teamAgentsList" style="border:1px solid var(--border);border-radius:6px;padding:8px;max-height:200px;overflow-y:auto;background:var(--bg)">
+      <div style="font-size:11px;color:#484f58">Добавьте агентов</div>
+    </div>
+    <button class="btn-secondary btn-sm" onclick="addTeamAgent()" style="margin-top:8px">➕ Добавить агента</button>
+    <div id="createTeamResult" style="margin-top:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;display:none;max-height:150px;overflow-y:auto;white-space:pre-wrap"></div>
+    <div class="modal-btns">
+      <button class="btn-green" onclick="createTeam()">Создать и запустить</button>
+      <button class="btn-secondary" onclick="document.getElementById('createTeamModal').classList.remove('show')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Team Detail Modal -->
+<div class="modal-overlay" id="teamDetailModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0" id="teamDetailTitle">Команда</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('teamDetailModal').classList.remove('show')">✕</button>
+    </div>
+    <div id="teamDetailContent" style="overflow-y:auto;max-height:60vh"></div>
+  </div>
+</div>
+
+</body>
+</html>

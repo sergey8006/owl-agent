@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OWL Agent specific
+memory/*.db
+memory/*.db-wal
+memory/*.db-shm
+projects/
+static/cache/
+
+# Sensitive
+.env
+*.key
+*.pem
+
+# Binary libraries — too large for git, use offline installer instead
+libs/
+libs_win/
+libs_win314/
+*.whl
+*.tar.gz
+*.zip
+
+# Offline installer
+install.bat
+OWLAgent_win.zip
+OWLAgent_src.zip
