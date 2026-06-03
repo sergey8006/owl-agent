@@ -238,6 +238,42 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
     </div>
   </section>
   <section>
+    <h3 onclick="toggleSection(this)">ReAct & Tasks<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showReActPanel()"><span class="icon">🧠</span><span>ReAct Engine</span></button>
+    <button class="sidebar-btn" onclick="showTaskQueue()"><span class="icon">📋</span><span>Task Queue</span></button>
+    <div id="sidebarTasks" style="padding:4px 8px;font-size:11px;color:#484f58"></div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">RAG Knowledge<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showRAGPanel()"><span class="icon">📚</span><span>Knowledge Base</span></button>
+    <div id="sidebarRAG" style="padding:4px 8px;font-size:11px;color:#484f58">0 docs</div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Scheduler<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showSchedulerPanel()"><span class="icon">⏰</span><span>Scheduler</span></button>
+    <div id="sidebarScheduler" style="padding:4px 8px;font-size:11px;color:#484f58">0 jobs</div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Webhooks<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showWebhookPanel()"><span class="icon">🔗</span><span>Webhooks</span></button>
+    <div id="sidebarWebhooks" style="padding:4px 8px;font-size:11px;color:#484f58">0 hooks</div>
+    </div>
+  </section>
+  <section>
+    <h3 onclick="toggleSection(this)">Secrets<span class="arrow">▼</span></h3>
+    <div class="section-body">
+    <button class="sidebar-btn" onclick="showSecretsPanel()"><span class="icon">🔑</span><span>Secrets</span></button>
+    <div id="sidebarSecrets" style="padding:4px 8px;font-size:11px;color:#484f58">0 keys</div>
+    </div>
+  </section>
+  <section>
     <h3 onclick="toggleSection(this)">Agent Teams v3.0<span class="arrow">▼</span></h3>
     <div class="section-body">
     <button class="sidebar-btn" onclick="showCreateTeamModal()"><span class="icon">👥</span><span>Создать команду</span></button>
@@ -343,7 +379,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 5. Проверяй результат после действий (read_file, list_dir).
 6. Используй инструменты в первую очередь — не угадывай.
 
-Инструменты: run_command, read_file, write_file, patch, search_files, list_dir, calculator, web_search, web_fetch, todo_write, todo_read, git, learn_fact, search_memory, list_skills, get_skill, run_skill, file_create, file_delete, file_rename, script_save, script_exec.</textarea>
+Инструменты: run_command, read_file, write_file, edit_file, list_dir, execute_code, web_search, calculator, learn_fact, get_memory_stats, use_skill, system_info, list_disks, list_processes, manage_service, flow_create, flow_run, rag_search, rag_ask, rag_index_file, rag_list_docs, task_create, task_list, react_solve, run_cmd, run_powershell.</textarea>
     <div class="modal-btns">
       <button class="btn-primary" onclick="saveSettings()">Сохранить</button>
       <button class="btn-secondary" onclick="closeSettings()">Отмена</button>
@@ -2823,5 +2859,317 @@ init();
   </div>
 </div>
 
+
+<!-- ===== PHASE 1+2 MODALS & JS ===== -->
+
+<!-- ReAct Modal -->
+<div class="modal-overlay" id="reactModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🧠 ReAct Engine</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('reactModal').classList.remove('show')">✕</button>
+    </div>
+    <label>Task for ReAct</label>
+    <textarea id="reactTask" rows="3" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px;resize:vertical" placeholder="Describe the task..."></textarea>
+    <label>Max Steps</label>
+    <input type="number" id="reactMaxSteps" value="10" min="3" max="30" style="width:80px;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+    <div id="reactStatus" style="font-size:11px;color:#8b949e;margin-top:8px;min-height:16px"></div>
+    <div id="reactLog" style="margin-top:12px;max-height:40vh;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:11px;white-space:pre-wrap;display:none"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="runReAct()">▶ Run</button>
+      <button class="btn-secondary" onclick="document.getElementById('reactModal').classList.remove('show')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Task Queue Modal -->
+<div class="modal-overlay" id="taskQueueModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📋 Task Queue</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('taskQueueModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="newTaskDesc" style="flex:1" placeholder="New task..." onkeydown="if(event.key==='Enter')createTask()">
+      <input type="number" id="newTaskPriority" value="5" min="1" max="10" style="width:60px" title="Priority 1=highest">
+      <button class="btn-primary btn-sm" onclick="createTask()">Add</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="generateObjective" style="flex:1" placeholder="Objective for auto-generation...">
+      <button class="btn-green btn-sm" onclick="generateTasks()">🎯 Generate</button>
+    </div>
+    <div id="taskList" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+  </div>
+</div>
+
+<!-- RAG Modal -->
+<div class="modal-overlay" id="ragModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📚 Knowledge Base (RAG)</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('ragModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="ragFilePath" style="flex:1" placeholder="File path to index...">
+      <button class="btn-primary btn-sm" onclick="ragIndexFile()">Index File</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="ragDirPath" style="flex:1" placeholder="Directory path...">
+      <button class="btn-green btn-sm" onclick="ragIndexDir()">Index Dir</button>
+    </div>
+    <label>Search / Ask</label>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input type="text" id="ragQuery" style="flex:1" placeholder="Search query or question..." onkeydown="if(event.key==='Enter')ragAsk()">
+      <button class="btn-primary btn-sm" onclick="ragAsk()">Ask</button>
+      <button class="btn-secondary btn-sm" onclick="ragSearch()">Search</button>
+    </div>
+    <div id="ragStatus" style="font-size:11px;color:#8b949e;margin-bottom:8px"></div>
+    <div id="ragResults" style="max-height:40vh;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:12px;white-space:pre-wrap;display:none"></div>
+    <div style="margin-top:12px">
+      <div style="font-size:11px;color:#8b949e;margin-bottom:4px">Indexed Documents</div>
+      <div id="ragDocList" style="max-height:15vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px;font-size:11px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Scheduler Modal -->
+<div class="modal-overlay" id="schedulerModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">⏰ Scheduler</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('schedulerModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <input type="text" id="schedName" style="flex:1;min-width:120px" placeholder="Job name...">
+      <select id="schedType" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <option value="interval">Interval</option>
+        <option value="cron">Cron</option>
+        <option value="oneshot">One-shot</option>
+      </select>
+      <input type="text" id="schedInterval" style="width:80px" placeholder="Seconds">
+      <button class="btn-primary btn-sm" onclick="addSchedulerJob()">Add</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="schedCommand" style="flex:1" placeholder="Command or flow_id...">
+    </div>
+    <div id="schedulerList" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+  </div>
+</div>
+
+<!-- Webhook Modal -->
+<div class="modal-overlay" id="webhookModal">
+  <div class="modal" style="max-width:680px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🔗 Webhooks</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('webhookModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <input type="text" id="whName" style="flex:1;min-width:120px" placeholder="Webhook name...">
+      <input type="text" id="whFlowId" style="width:120px" placeholder="Flow ID">
+      <input type="text" id="whCommand" style="flex:1;min-width:120px" placeholder="Command">
+      <button class="btn-primary btn-sm" onclick="registerWebhook()">Register</button>
+    </div>
+    <div id="webhookList" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+  </div>
+</div>
+
+<!-- Secrets Modal -->
+<div class="modal-overlay" id="secretsModal">
+  <div class="modal" style="max-width:520px;max-height:85vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">🔑 Secrets Manager</h3>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('secretsModal').classList.remove('show')">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="secretKey" style="flex:1" placeholder="Key">
+      <input type="text" id="secretValue" style="flex:1" placeholder="Value">
+      <button class="btn-primary btn-sm" onclick="setSecret()">Save</button>
+    </div>
+    <div id="secretsList" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+  </div>
+</div>
+
+<script>
+// ===== ReAct =====
+function showReActPanel(){document.getElementById('reactModal').classList.add('show')}
+async function runReAct(){
+  const task=document.getElementById('reactTask').value.trim();
+  const maxSteps=parseInt(document.getElementById('reactMaxSteps').value)||10;
+  if(!task)return;
+  const log=document.getElementById('reactLog');
+  const status=document.getElementById('reactStatus');
+  log.style.display='block';log.textContent='Running...
+';
+  status.textContent='Executing ReAct loop...';
+  try{
+    const resp=await fetch('/api/react/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task,max_steps:maxSteps})});
+    const data=await resp.json();
+    log.textContent=data.log?data.log.join('
+'):JSON.stringify(data,null,2);
+    status.textContent='Status: '+data.status;
+  }catch(e){status.textContent='Error: '+e.message}
+}
+
+// ===== Task Queue =====
+function showTaskQueue(){document.getElementById('taskQueueModal').classList.add('show');loadTasks()}
+async function loadTasks(){
+  try{
+    const resp=await fetch('/api/tasks/list');
+    const data=await resp.json();
+    const list=document.getElementById('taskList');
+    if(!data.tasks||data.tasks.length===0){list.innerHTML='<div style="padding:8px;color:#484f58">No tasks</div>';return}
+    list.innerHTML=data.tasks.map(t=>{
+      const c=t.status==='completed'?'var(--green)':t.status==='failed'?'var(--red)':t.status==='in_progress'?'var(--yellow)':'#8b949e';
+      return '<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><span style="color:'+c+'">['+t.status+']</span> <span style="color:#8b949e">p'+t.priority+'</span> '+t.description+'</div><div style="display:flex;gap:4px">'+(t.status==='pending'?'<button class="btn-green btn-sm" onclick="completeTask(''+t.id+'')">✓</button><button class="btn-red btn-sm" onclick="failTask(''+t.id+'')">✗</button>':'')+'</div></div>';
+    }).join('');
+    document.getElementById('sidebarTasks').textContent=data.tasks.filter(t=>t.status==='pending').length+' pending';
+  }catch(e){}
+}
+async function createTask(){
+  const desc=document.getElementById('newTaskDesc').value.trim();
+  const priority=parseInt(document.getElementById('newTaskPriority').value)||5;
+  if(!desc)return;
+  await fetch('/api/tasks/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({description:desc,priority})});
+  document.getElementById('newTaskDesc').value='';loadTasks();
+}
+async function completeTask(id){
+  await fetch('/api/tasks/'+id+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({result:'completed'})});loadTasks();
+}
+async function failTask(id){
+  await fetch('/api/tasks/'+id+'/fail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({error:'failed'})});loadTasks();
+}
+async function generateTasks(){
+  const obj=document.getElementById('generateObjective').value.trim();
+  if(!obj)return;
+  await fetch('/api/tasks/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:obj,max_tasks:5})});
+  document.getElementById('generateObjective').value='';loadTasks();
+}
+
+// ===== RAG =====
+function showRAGPanel(){document.getElementById('ragModal').classList.add('show');loadRAGDocs()}
+async function ragIndexFile(){
+  const path=document.getElementById('ragFilePath').value.trim();
+  if(!path)return;
+  const resp=await fetch('/api/rag/index-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+  const data=await resp.json();
+  document.getElementById('ragStatus').textContent=data.error||'Indexed: '+data.chunks+' chunks';
+  document.getElementById('ragFilePath').value='';loadRAGDocs();
+}
+async function ragIndexDir(){
+  const path=document.getElementById('ragDirPath').value.trim();
+  if(!path)return;
+  const resp=await fetch('/api/rag/index-dir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+  const data=await resp.json();
+  document.getElementById('ragStatus').textContent='Loaded: '+data.loaded+' files';
+  document.getElementById('ragDirPath').value='';loadRAGDocs();
+}
+async function ragSearch(){
+  const query=document.getElementById('ragQuery').value.trim();
+  if(!query)return;
+  const resp=await fetch('/api/rag/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,top_k:5})});
+  const data=await resp.json();
+  const r=document.getElementById('ragResults');r.style.display='block';
+  r.textContent=data.results&&data.results.length?data.results.map(x=>'['+x.source+'] (score: '+x.score.toFixed(3)+')
+'+x.content.substring(0,300)).join('
+---
+'):'No results found.';
+}
+async function ragAsk(){
+  const q=document.getElementById('ragQuery').value.trim();
+  if(!q)return;
+  const r=document.getElementById('ragResults');r.style.display='block';r.textContent='Thinking...';
+  const resp=await fetch('/api/rag/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+  const data=await resp.json();
+  r.textContent=data.answer+'
+
+Sources: '+(data.sources||[]).map(s=>s.source).join(', ');
+}
+async function loadRAGDocs(){
+  try{
+    const resp=await fetch('/api/rag/documents');
+    const data=await resp.json();
+    const list=document.getElementById('ragDocList');
+    if(!data.documents||data.documents.length===0){list.innerHTML='<div style="padding:4px;color:#484f58">No documents</div>'}
+    else{list.innerHTML=data.documents.map(d=>'<div style="padding:4px 8px;display:flex;justify-content:space-between"><span>'+d.title+' ('+d.chunk_count+' chunks)</span><button class="btn-red btn-sm" onclick="ragDeleteDoc(''+d.id+'')">✗</button></div>').join('')}
+    document.getElementById('sidebarRAG').textContent=data.documents.length+' docs';
+  }catch(e){}
+}
+async function ragDeleteDoc(id){await fetch('/api/rag/document/'+id,{method:'DELETE'});loadRAGDocs()}
+
+// ===== Scheduler =====
+function showSchedulerPanel(){document.getElementById('schedulerModal').classList.add('show');loadSchedulerJobs()}
+async function loadSchedulerJobs(){
+  try{
+    const resp=await fetch('/api/scheduler/list');
+    const data=await resp.json();
+    const list=document.getElementById('schedulerList');
+    if(!data.jobs||data.jobs.length===0){list.innerHTML='<div style="padding:8px;color:#484f58">No jobs</div>'}
+    else{list.innerHTML=data.jobs.map(j=>'<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><span style="color:'+(j.enabled?'var(--green)':'#8b949e')+'">'+(j.enabled?'ON':'OFF')+'</span> '+j.name+' <span style="color:#484f58">('+j.type+')</span></div><div style="display:flex;gap:4px"><button class="btn-secondary btn-sm" onclick="toggleJob(''+j.id+'')">'+(j.enabled?'⏸':'▶')+'</button><button class="btn-green btn-sm" onclick="runJobNow(''+j.id+'')">Run</button><button class="btn-red btn-sm" onclick="removeJob(''+j.id+'')">✗</button></div></div>').join('')}
+    document.getElementById('sidebarScheduler').textContent=data.jobs.length+' jobs';
+  }catch(e){}
+}
+async function addSchedulerJob(){
+  const name=document.getElementById('schedName').value.trim();
+  const type=document.getElementById('schedType').value;
+  const cmd=document.getElementById('schedCommand').value.trim();
+  if(!name)return;
+  const body={name,type,command:cmd};
+  if(type==='interval')body.interval_seconds=parseInt(document.getElementById('schedInterval').value)||3600;
+  await fetch('/api/scheduler/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  document.getElementById('schedName').value='';document.getElementById('schedCommand').value='';loadSchedulerJobs();
+}
+async function toggleJob(id){await fetch('/api/scheduler/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadSchedulerJobs()}
+async function runJobNow(id){await fetch('/api/scheduler/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})}
+async function removeJob(id){await fetch('/api/scheduler/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadSchedulerJobs()}
+
+// ===== Webhooks =====
+function showWebhookPanel(){document.getElementById('webhookModal').classList.add('show');loadWebhooks()}
+async function loadWebhooks(){
+  try{
+    const resp=await fetch('/api/webhook/list');
+    const data=await resp.json();
+    const list=document.getElementById('webhookList');
+    if(!data.webhooks||data.webhooks.length===0){list.innerHTML='<div style="padding:8px;color:#484f58">No webhooks</div>'}
+    else{list.innerHTML=data.webhooks.map(w=>'<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><span style="color:var(--accent)">'+w.name+'</span> <span style="color:#484f58">('+w.calls+' calls)</span></div><div style="display:flex;gap:4px"><button class="btn-red btn-sm" onclick="deleteWebhook(''+w.id+'')">✗</button></div></div>').join('')}
+    document.getElementById('sidebarWebhooks').textContent=data.webhooks.length+' hooks';
+  }catch(e){}
+}
+async function registerWebhook(){
+  const name=document.getElementById('whName').value.trim();
+  const flow_id=document.getElementById('whFlowId').value.trim();
+  const cmd=document.getElementById('whCommand').value.trim();
+  if(!name)return;
+  const resp=await fetch('/api/webhook/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,flow_id,command:cmd})});
+  const data=await resp.json();
+  if(data.url)alert('URL: '+window.location.origin+data.url+'?token='+data.token);
+  document.getElementById('whName').value='';document.getElementById('whFlowId').value='';document.getElementById('whCommand').value='';loadWebhooks();
+}
+async function deleteWebhook(id){await fetch('/api/webhook/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadWebhooks()}
+
+// ===== Secrets =====
+function showSecretsPanel(){document.getElementById('secretsModal').classList.add('show');loadSecrets()}
+async function loadSecrets(){
+  try{
+    const resp=await fetch('/api/secrets/list');
+    const data=await resp.json();
+    const list=document.getElementById('secretsList');
+    if(!data.keys||data.keys.length===0){list.innerHTML='<div style="padding:8px;color:#484f58">No secrets</div>'}
+    else{list.innerHTML=data.keys.map(k=>'<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-family:monospace">'+k+'</span><div style="display:flex;gap:4px"><button class="btn-secondary btn-sm" onclick="getSecret(''+k+'')">Show</button><button class="btn-red btn-sm" onclick="deleteSecret(''+k+'')">✗</button></div></div>').join('')}
+    document.getElementById('sidebarSecrets').textContent=data.keys.length+' keys';
+  }catch(e){}
+}
+async function setSecret(){
+  const key=document.getElementById('secretKey').value.trim();
+  const val=document.getElementById('secretValue').value;
+  if(!key)return;
+  await fetch('/api/secrets/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,value:val})});
+  document.getElementById('secretKey').value='';document.getElementById('secretValue').value='';loadSecrets();
+}
+async function getSecret(key){const r=await fetch('/api/secrets/get?key='+encodeURIComponent(key));const d=await r.json();alert(key+' = '+(d.value||'(empty)'))}
+async function deleteSecret(key){await fetch('/api/secrets/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});loadSecrets()}
+
+// Update sidebar counts on load
+document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){loadTasks();loadRAGDocs();loadSchedulerJobs();loadWebhooks();loadSecrets()},1000)});
+</script>
 </body>
 </html>
